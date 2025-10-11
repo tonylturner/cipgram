@@ -1,0 +1,1816 @@
+package main
+
+import (
+	"bufio"
+	"encoding/binary"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"log"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
+	"gopkg.in/yaml.v3"
+)
+
+/* =========================
+   Types & constants
+========================= */
+
+type PurdueLevel string
+
+const (
+	Unknown PurdueLevel = "Unknown"
+	L1      PurdueLevel = "Level 1"
+	L2      PurdueLevel = "Level 2"
+	L3      PurdueLevel = "Level 3"
+)
+
+type Protocol string
+
+const (
+	ProtoENIP_Explicit Protocol = "ENIP-TCP-44818"
+	ProtoENIP_Implicit Protocol = "ENIP-UDP-2222"
+	ProtoModbus        Protocol = "ModbusTCP-502"
+	ProtoModbusRTU     Protocol = "ModbusRTU-Serial"
+	ProtoDNP3          Protocol = "DNP3-20000"
+	ProtoBACnet        Protocol = "BACnetIP-47808"
+	ProtoProfinetDCP   Protocol = "Profinet-DCP-0x8892"
+	ProtoProfinetRT    Protocol = "Profinet-RT-0x8100"
+	ProtoOPC           Protocol = "OPC-DCOM"
+	ProtoOPCUA         Protocol = "OPC-UA-4840"
+	ProtoSINEC         Protocol = "SINEC-8834"
+	ProtoS7Comm        Protocol = "S7Comm-102"
+	ProtoFins          Protocol = "FINS-9600"
+	ProtoSlmp          Protocol = "SLMP-5007"
+	ProtoCCLink        Protocol = "CC-Link-1025"
+	ProtoMelsecQ       Protocol = "MelsecQ-5007"
+	ProtoOmronTCP      Protocol = "Omron-TCP-9600"
+	ProtoProconOS      Protocol = "ProconOS-20547"
+	ProtoEGD           Protocol = "EGD-18246"
+	ProtoSRTP          Protocol = "SRTP-18246"
+	ProtoOther         Protocol = "Other"
+)
+
+type FlowKey struct {
+	SrcIP, DstIP string
+	Proto        Protocol
+}
+
+type Edge struct {
+	Src           string      `json:"src"`
+	Dst           string      `json:"dst"`
+	Protocol      Protocol    `json:"protocol"`
+	Packets       int         `json:"packets"`
+	Bytes         int64       `json:"bytes"`
+	FirstSeen     time.Time   `json:"first_seen"`
+	LastSeen      time.Time   `json:"last_seen"`
+	InferredLevel PurdueLevel `json:"inferred_level"`
+	Notes         []string    `json:"notes,omitempty"`
+	// CIP extras (best-effort)
+	CIPService     string `json:"cip_service,omitempty"`
+	CIPServiceCode string `json:"cip_service_code,omitempty"`
+}
+
+type Host struct {
+	IP            string          `json:"ip"`
+	MAC           string          `json:"mac,omitempty"`
+	Hostname      string          `json:"hostname,omitempty"`
+	DeviceName    string          `json:"device_name,omitempty"` // From protocol detection
+	Vendor        string          `json:"vendor,omitempty"`      // From MAC OUI
+	PortsSeen     map[uint16]bool `json:"ports_seen"`
+	ICSScore      int             `json:"ics_score"`
+	ITScore       int             `json:"it_score"`
+	InferredLevel PurdueLevel     `json:"inferred_level"`
+	Roles         []string        `json:"roles,omitempty"`
+	MulticastPeer bool            `json:"multicast_peer"`
+
+	// Stats built from edges (for heuristic classification)
+	PeersByProtoInitiated map[Protocol]map[string]bool `json:"-"`
+	PeersByProtoReceived  map[Protocol]map[string]bool `json:"-"`
+	InitiatedCounts       map[Protocol]int             `json:"-"`
+	ReceivedCounts        map[Protocol]int             `json:"-"`
+
+	// Mapping override (from YAML)
+	OverrideLevel *PurdueLevel `json:"override_level,omitempty"`
+	OverrideRole  string       `json:"override_role,omitempty"`
+}
+
+func (h *Host) ensureMaps() {
+	if h.PeersByProtoInitiated == nil {
+		h.PeersByProtoInitiated = map[Protocol]map[string]bool{}
+	}
+	if h.PeersByProtoReceived == nil {
+		h.PeersByProtoReceived = map[Protocol]map[string]bool{}
+	}
+	if h.InitiatedCounts == nil {
+		h.InitiatedCounts = map[Protocol]int{}
+	}
+	if h.ReceivedCounts == nil {
+		h.ReceivedCounts = map[Protocol]int{}
+	}
+}
+
+type Graph struct {
+	Hosts map[string]*Host  `json:"hosts"`
+	Edges map[FlowKey]*Edge `json:"edges"`
+}
+
+func newGraph() *Graph {
+	return &Graph{
+		Hosts: make(map[string]*Host),
+		Edges: make(map[FlowKey]*Edge),
+	}
+}
+
+func (g *Graph) getHost(id string) *Host {
+	h, ok := g.Hosts[id]
+	if !ok {
+		h = &Host{
+			IP:        id,
+			PortsSeen: map[uint16]bool{},
+		}
+		g.Hosts[id] = h
+	}
+	h.ensureMaps()
+	return h
+}
+
+func isMulticastIP(ip net.IP) bool { return ip != nil && ip.IsMulticast() }
+
+// Common industrial OUI prefixes (first 3 bytes of MAC address)
+var industrialOUIs = map[string]string{
+	"00:0E:8C": "Rockwell Automation", // Allen-Bradley
+	"00:00:BC": "Allen-Bradley",
+	"00:50:4F": "Rockwell Automation",
+	"00:A0:45": "Rockwell Automation",
+	"08:00:06": "Siemens",
+	"00:0F:CB": "Siemens",
+	"00:1B:1B": "Siemens",
+	"5C:E0:C5": "Siemens",
+	"00:50:7F": "Schneider Electric",
+	"00:80:F4": "Schneider Electric",
+	"00:C0:F2": "Schneider Electric",
+	"00:0C:7C": "Omron",
+	"00:05:9F": "Omron",
+	"00:1D:44": "Omron",
+	"00:03:7F": "Mitsubishi Electric",
+	"00:00:64": "Mitsubishi Electric",
+	"00:1C:06": "Honeywell",
+	"00:50:E4": "Honeywell",
+	"00:0B:AD": "GE Fanuc",
+	"00:A0:69": "GE Fanuc",
+	"00:04:3E": "B&R Industrial",
+	"00:50:C2": "Phoenix Contact",
+	"00:0E:0C": "Beckhoff",
+	"00:01:05": "Pilz",
+	"00:60:65": "ABB",
+	"00:20:D2": "Emerson",
+	"00:07:7D": "Pepperl+Fuchs",
+}
+
+// lookupOUI returns vendor name from MAC address OUI
+func lookupOUI(mac string) string {
+	if len(mac) < 8 {
+		return ""
+	}
+
+	// Extract first 3 bytes (OUI)
+	oui := strings.ToUpper(mac[:8])
+
+	if vendor, exists := industrialOUIs[oui]; exists {
+		return vendor
+	}
+
+	return ""
+}
+
+// resolveHostname attempts to resolve IP to hostname
+func resolveHostname(ip string) string {
+	if parsedIP := net.ParseIP(ip); parsedIP != nil {
+		names, err := net.LookupAddr(ip)
+		if err == nil && len(names) > 0 {
+			hostname := names[0]
+			// Clean up hostname (remove trailing dot, shorten long names)
+			hostname = strings.TrimSuffix(hostname, ".")
+			if strings.Contains(hostname, ".") {
+				parts := strings.Split(hostname, ".")
+				hostname = parts[0] // Use just the host part
+			}
+			// Limit length for display
+			if len(hostname) > 15 {
+				hostname = hostname[:12] + "..."
+			}
+			return hostname
+		}
+	}
+	return ""
+}
+
+// detectDeviceName attempts to identify device from vendor, protocols, and roles
+func detectDeviceName(host *Host) string {
+	// Start with vendor-specific naming
+	vendor := host.Vendor
+	if vendor == "" {
+		vendor = "Industrial"
+	}
+
+	// Determine device type from protocols and communication patterns
+	deviceType := ""
+
+	// Check for specific protocol patterns that indicate device types
+	if host.ReceivedCounts[ProtoENIP_Explicit] > 0 && host.InitiatedCounts[ProtoENIP_Implicit] > 0 {
+		deviceType = "PLC"
+	} else if host.InitiatedCounts[ProtoENIP_Explicit] > 2 && host.ITScore > 0 {
+		deviceType = "HMI"
+	} else if host.ReceivedCounts[ProtoModbus] > host.InitiatedCounts[ProtoModbus] {
+		deviceType = "PLC"
+	} else if host.InitiatedCounts[ProtoModbus] > host.ReceivedCounts[ProtoModbus] {
+		deviceType = "HMI/SCADA"
+	} else if host.ReceivedCounts[ProtoS7Comm] > 0 {
+		deviceType = "PLC"
+	} else if host.PortsSeen[2222] && host.MulticastPeer {
+		deviceType = "I/O Device"
+	} else if host.ITScore > host.ICSScore && host.ITScore > 0 {
+		deviceType = "Server"
+	} else if host.ICSScore > 0 {
+		deviceType = "Device"
+	}
+
+	// Combine vendor and device type
+	if deviceType != "" {
+		if vendor != "Industrial" {
+			return vendor + " " + deviceType
+		} else {
+			return deviceType
+		}
+	}
+
+	// Fallback to vendor only
+	if vendor != "Industrial" {
+		return vendor + " Device"
+	}
+
+	return ""
+}
+
+// filterGraph applies relationship-focused simplification
+func filterGraph(g *Graph, hideUnknown bool, maxNodes int) *Graph {
+	filtered := newGraph()
+
+	// Step 1: Filter hosts by classification (not packet count)
+	significantHosts := make(map[string]*Host)
+	for ip, host := range g.Hosts {
+		// Include if has clear role or good ICS score
+		include := false
+
+		if !hideUnknown || host.InferredLevel != Unknown {
+			include = true
+		}
+
+		// Always include hosts with ICS protocols or clear roles
+		if host.ICSScore > 0 || len(host.Roles) > 0 {
+			include = true
+		}
+
+		if include {
+			significantHosts[ip] = host
+		}
+	}
+
+	// Step 2: Include all edges between significant hosts (regardless of packet count)
+	significantEdges := make(map[FlowKey]*Edge)
+	for key, edge := range g.Edges {
+		if _, srcExists := significantHosts[edge.Src]; srcExists {
+			if _, dstExists := significantHosts[edge.Dst]; dstExists {
+				significantEdges[key] = edge
+			}
+		}
+	}
+
+	// Step 3: Limit nodes if requested, prioritizing by ICS relevance
+	if maxNodes > 0 && len(significantHosts) > maxNodes {
+		type hostScore struct {
+			host  *Host
+			score int
+		}
+
+		var scores []hostScore
+		for _, host := range significantHosts {
+			// Score based on ICS relevance, not traffic volume
+			score := 0
+
+			// High score for clear industrial roles
+			if len(host.Roles) > 0 {
+				score += 50
+			}
+
+			// Score for ICS protocols
+			score += host.ICSScore * 20
+
+			// Score for being in a defined Purdue level
+			if host.InferredLevel != Unknown {
+				score += 30
+			}
+
+			// Small bonus for IT score (but much less important)
+			score += host.ITScore * 2
+
+			scores = append(scores, hostScore{host: host, score: score})
+		}
+
+		// Sort by ICS relevance
+		sort.Slice(scores, func(i, j int) bool {
+			return scores[i].score > scores[j].score
+		})
+
+		// Keep only top N hosts
+		significantHosts = make(map[string]*Host)
+		for i := 0; i < maxNodes && i < len(scores); i++ {
+			significantHosts[scores[i].host.IP] = scores[i].host
+		}
+
+		// Re-filter edges for the reduced host set
+		filteredEdges := make(map[FlowKey]*Edge)
+		for key, edge := range significantEdges {
+			if _, srcExists := significantHosts[edge.Src]; srcExists {
+				if _, dstExists := significantHosts[edge.Dst]; dstExists {
+					filteredEdges[key] = edge
+				}
+			}
+		}
+		significantEdges = filteredEdges
+	}
+
+	// Step 4: Build filtered graph
+	for ip, host := range significantHosts {
+		filtered.Hosts[ip] = host
+	}
+	filtered.Edges = significantEdges
+
+	return filtered
+}
+
+// createSummaryGraph creates a simplified view by grouping similar connections
+func createSummaryGraph(g *Graph) *Graph {
+	summary := newGraph()
+
+	// Group hosts by Purdue level and role
+	levelGroups := make(map[PurdueLevel]map[string][]*Host)
+	for _, host := range g.Hosts {
+		if levelGroups[host.InferredLevel] == nil {
+			levelGroups[host.InferredLevel] = make(map[string][]*Host)
+		}
+
+		role := "Device"
+		if len(host.Roles) > 0 {
+			role = host.Roles[0] // Use primary role
+		}
+
+		levelGroups[host.InferredLevel][role] = append(levelGroups[host.InferredLevel][role], host)
+	}
+
+	// Create summary nodes
+	nodeMap := make(map[string]string) // original IP -> summary node ID
+	for level, roleGroups := range levelGroups {
+		for role, hosts := range roleGroups {
+			if len(hosts) == 1 {
+				// Single host, keep as-is
+				host := hosts[0]
+				summary.Hosts[host.IP] = host
+				nodeMap[host.IP] = host.IP
+			} else {
+				// Multiple hosts, create summary node
+				summaryID := fmt.Sprintf("%s_%s_Group", level, role)
+				summaryHost := &Host{
+					IP:            summaryID,
+					InferredLevel: level,
+					Roles:         []string{fmt.Sprintf("%s (%d devices)", role, len(hosts))},
+					PortsSeen:     make(map[uint16]bool),
+				}
+				summary.Hosts[summaryID] = summaryHost
+
+				// Map all original hosts to this summary
+				for _, host := range hosts {
+					nodeMap[host.IP] = summaryID
+				}
+			}
+		}
+	}
+
+	// Aggregate edges between summary nodes
+	edgeStats := make(map[FlowKey]*Edge)
+	for _, edge := range g.Edges {
+		srcSummary := nodeMap[edge.Src]
+		dstSummary := nodeMap[edge.Dst]
+
+		if srcSummary == "" || dstSummary == "" {
+			continue // Skip if host not in summary
+		}
+
+		key := FlowKey{SrcIP: srcSummary, DstIP: dstSummary, Proto: edge.Protocol}
+		if existing, exists := edgeStats[key]; exists {
+			// Aggregate stats
+			existing.Packets += edge.Packets
+			existing.Bytes += edge.Bytes
+			if edge.FirstSeen.Before(existing.FirstSeen) {
+				existing.FirstSeen = edge.FirstSeen
+			}
+			if edge.LastSeen.After(existing.LastSeen) {
+				existing.LastSeen = edge.LastSeen
+			}
+		} else {
+			// Create new aggregated edge
+			edgeStats[key] = &Edge{
+				Src:           srcSummary,
+				Dst:           dstSummary,
+				Protocol:      edge.Protocol,
+				Packets:       edge.Packets,
+				Bytes:         edge.Bytes,
+				FirstSeen:     edge.FirstSeen,
+				LastSeen:      edge.LastSeen,
+				InferredLevel: edge.InferredLevel,
+				Notes:         []string{fmt.Sprintf("Aggregated %s flow", edge.Protocol)},
+			}
+		}
+	}
+
+	summary.Edges = edgeStats
+	return summary
+}
+
+// createOutputDir creates the output directory structure: diagrams/$pcapname/
+func createOutputDir(pcapPath string) (string, error) {
+	if pcapPath == "" {
+		// For live capture, use timestamp
+		pcapPath = fmt.Sprintf("live_capture_%d", time.Now().Unix())
+	}
+
+	// Extract filename without extension
+	baseName := filepath.Base(pcapPath)
+	if ext := filepath.Ext(baseName); ext != "" {
+		baseName = strings.TrimSuffix(baseName, ext)
+	}
+
+	// Create diagrams directory structure
+	outputDir := filepath.Join("diagrams", baseName)
+	err := os.MkdirAll(outputDir, 0755)
+	if err != nil {
+		return "", fmt.Errorf("failed to create output directory %s: %v", outputDir, err)
+	}
+
+	return outputDir, nil
+}
+
+// generateImage creates PNG and SVG images from DOT file using Graphviz
+func generateImage(dotPath, outputDir string) error {
+	// Check if dot command is available
+	if _, err := exec.LookPath("dot"); err != nil {
+		log.Printf("Warning: Graphviz 'dot' command not found. Skipping image generation.")
+		log.Printf("Install Graphviz: brew install graphviz (macOS) or apt install graphviz (Linux)")
+		return nil // Don't fail, just skip image generation
+	}
+
+	baseName := strings.TrimSuffix(filepath.Base(dotPath), ".dot")
+
+	// Generate PNG
+	pngPath := filepath.Join(outputDir, baseName+".png")
+	cmd := exec.Command("dot", "-Tpng", dotPath, "-o", pngPath)
+	if err := cmd.Run(); err != nil {
+		log.Printf("Warning: Failed to generate PNG: %v", err)
+	} else {
+		log.Printf("Generated PNG: %s", pngPath)
+	}
+
+	// Generate SVG
+	svgPath := filepath.Join(outputDir, baseName+".svg")
+	cmd = exec.Command("dot", "-Tsvg", dotPath, "-o", svgPath)
+	if err := cmd.Run(); err != nil {
+		log.Printf("Warning: Failed to generate SVG: %v", err)
+	} else {
+		log.Printf("Generated SVG: %s", svgPath)
+	}
+
+	// Generate high-resolution PNG for large networks
+	pngHiPath := filepath.Join(outputDir, baseName+"_hires.png")
+	cmd = exec.Command("dot", "-Tpng", "-Gdpi=300", "-Gsize=20,15!", "-Gratio=fill", dotPath, "-o", pngHiPath)
+	if err := cmd.Run(); err != nil {
+		log.Printf("Warning: Failed to generate high-res PNG: %v", err)
+	} else {
+		log.Printf("Generated high-res PNG: %s", pngHiPath)
+	}
+
+	return nil
+}
+
+// isPrivateIP checks if an IP is in a private/internal range
+func isPrivateIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	// RFC 1918 private networks
+	private10 := net.IPNet{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(8, 32)}
+	private172 := net.IPNet{IP: net.IPv4(172, 16, 0, 0), Mask: net.CIDRMask(12, 32)}
+	private192 := net.IPNet{IP: net.IPv4(192, 168, 0, 0), Mask: net.CIDRMask(16, 32)}
+
+	return private10.Contains(ip) || private172.Contains(ip) || private192.Contains(ip)
+}
+
+/* =========================
+   Optional YAML mapping
+========================= */
+
+type PurdueMapEntry struct {
+	CIDR  string `yaml:"cidr"`
+	Level string `yaml:"level"` // "Level 1", "Level 2", "Level 3"
+	Role  string `yaml:"role,omitempty"`
+}
+
+type PurdueConfig struct {
+	Mappings []PurdueMapEntry `yaml:"mappings"`
+}
+
+type compiledMapping struct {
+	IPNet *net.IPNet
+	Level PurdueLevel
+	Role  string
+}
+
+type MappingTable struct {
+	entries []compiledMapping
+}
+
+func loadMapping(path string) (*MappingTable, error) {
+	if path == "" {
+		return &MappingTable{}, nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var cfg PurdueConfig
+	if err := yaml.Unmarshal(b, &cfg); err != nil {
+		return nil, err
+	}
+	var out MappingTable
+	for _, m := range cfg.Mappings {
+		_, ipnet, err := net.ParseCIDR(m.CIDR)
+		if err != nil {
+			log.Printf("WARN: bad CIDR %q in config: %v", m.CIDR, err)
+			continue
+		}
+		var lvl PurdueLevel = Unknown
+		switch strings.TrimSpace(strings.ToLower(m.Level)) {
+		case "level 1", "l1":
+			lvl = L1
+		case "level 2", "l2":
+			lvl = L2
+		case "level 3", "l3":
+			lvl = L3
+		default:
+			lvl = Unknown
+		}
+		out.entries = append(out.entries, compiledMapping{
+			IPNet: ipnet,
+			Level: lvl,
+			Role:  m.Role,
+		})
+	}
+	return &out, nil
+}
+
+func (mt *MappingTable) apply(host *Host) {
+	ip := net.ParseIP(host.IP)
+	if ip == nil {
+		return // MAC-only node etc.
+	}
+	for _, e := range mt.entries {
+		if e.IPNet.Contains(ip) {
+			host.OverrideLevel = &e.Level
+			host.OverrideRole = e.Role
+			return
+		}
+	}
+}
+
+/* =========================
+   Protocol detection
+========================= */
+
+func protFromPacket(tcp *layers.TCP, udp *layers.UDP, eth *layers.Ethernet) (Protocol, uint16, uint16) {
+	if tcp != nil {
+		sp, dp := uint16(tcp.SrcPort), uint16(tcp.DstPort)
+		// Check source ports first
+		switch sp {
+		case 44818:
+			return ProtoENIP_Explicit, sp, dp
+		case 502:
+			return ProtoModbus, sp, dp
+		case 20000:
+			return ProtoDNP3, sp, dp
+		case 4840:
+			return ProtoOPCUA, sp, dp
+		case 102:
+			return ProtoS7Comm, sp, dp
+		case 9600:
+			// Could be FINS or Omron TCP
+			if isOmronTraffic(tcp.Payload) {
+				return ProtoOmronTCP, sp, dp
+			}
+			return ProtoFins, sp, dp
+		case 5007:
+			// Could be SLMP or MelsecQ
+			if isMelsecTraffic(tcp.Payload) {
+				return ProtoMelsecQ, sp, dp
+			}
+			return ProtoSlmp, sp, dp
+		case 1025:
+			return ProtoCCLink, sp, dp
+		case 20547:
+			return ProtoProconOS, sp, dp
+		case 18246:
+			return ProtoEGD, sp, dp
+		case 8834:
+			return ProtoSINEC, sp, dp
+		}
+		// Check destination ports
+		switch dp {
+		case 44818:
+			return ProtoENIP_Explicit, sp, dp
+		case 502:
+			return ProtoModbus, sp, dp
+		case 20000:
+			return ProtoDNP3, sp, dp
+		case 4840:
+			return ProtoOPCUA, sp, dp
+		case 102:
+			return ProtoS7Comm, sp, dp
+		case 9600:
+			if isOmronTraffic(tcp.Payload) {
+				return ProtoOmronTCP, sp, dp
+			}
+			return ProtoFins, sp, dp
+		case 5007:
+			if isMelsecTraffic(tcp.Payload) {
+				return ProtoMelsecQ, sp, dp
+			}
+			return ProtoSlmp, sp, dp
+		case 1025:
+			return ProtoCCLink, sp, dp
+		case 20547:
+			return ProtoProconOS, sp, dp
+		case 18246:
+			return ProtoEGD, sp, dp
+		case 8834:
+			return ProtoSINEC, sp, dp
+		}
+		// OPC classic DCOM ports
+		if sp == 135 || dp == 135 || sp == 49320 || dp == 49320 || sp == 49321 || dp == 49321 {
+			return ProtoOPC, sp, dp
+		}
+		return ProtoOther, sp, dp
+	}
+	if udp != nil {
+		sp, dp := uint16(udp.SrcPort), uint16(udp.DstPort)
+		switch sp {
+		case 2222:
+			return ProtoENIP_Implicit, sp, dp
+		case 47808:
+			return ProtoBACnet, sp, dp
+		case 18246:
+			return ProtoSRTP, sp, dp
+		}
+		switch dp {
+		case 2222:
+			return ProtoENIP_Implicit, sp, dp
+		case 47808:
+			return ProtoBACnet, sp, dp
+		case 18246:
+			return ProtoSRTP, sp, dp
+		}
+		return ProtoOther, sp, dp
+	}
+	if eth != nil {
+		switch eth.EthernetType {
+		case layers.EthernetType(0x8892):
+			return ProtoProfinetDCP, 0, 0
+		case layers.EthernetType(0x8100):
+			return ProtoProfinetRT, 0, 0
+		}
+	}
+	return ProtoOther, 0, 0
+}
+
+// Helper function to identify Omron TCP traffic by payload pattern
+func isOmronTraffic(payload []byte) bool {
+	if len(payload) < 8 {
+		return false
+	}
+	// Omron FINS command header pattern: "FINS" + version
+	if len(payload) >= 4 && string(payload[0:4]) == "FINS" {
+		return true
+	}
+	// Check for Omron TCP header pattern (different from FINS UDP)
+	if payload[0] == 0x46 && payload[1] == 0x49 && payload[2] == 0x4E && payload[3] == 0x53 {
+		return true
+	}
+	return false
+}
+
+// Helper function to identify Mitsubishi Melsec traffic
+func isMelsecTraffic(payload []byte) bool {
+	if len(payload) < 8 {
+		return false
+	}
+	// Check for SLMP header pattern
+	if len(payload) >= 11 && payload[0] == 0x50 && payload[1] == 0x00 {
+		return true
+	}
+	// Check for MC protocol pattern
+	if len(payload) >= 4 && payload[0] == 0x50 && (payload[1] == 0x00 || payload[1] == 0x01) {
+		return true
+	}
+	return false
+}
+
+/* =========================
+   Minimal ENIP/CIP sniffer
+========================= */
+
+var cipServiceNames = map[byte]string{
+	0x0E: "GetAttrSingle",
+	0x10: "SetAttrSingle",
+	0x01: "GetAttrAll",
+	0x52: "MultipleServicePacket",
+	0x4C: "ReadTagService",
+	0x4D: "WriteTagService",
+	0x4E: "ReadTagFragmented",
+	0x4F: "WriteTagFragmented",
+	0x0A: "GetAttributeList",
+	0x03: "SetAttributeList",
+}
+
+func parseENIP_CIP_FromTCP(payload []byte) (svcName string, svcHex string, ok bool) {
+	if len(payload) < 24 {
+		return "", "", false
+	}
+	cmd := binary.LittleEndian.Uint16(payload[0:2])
+	if cmd != 0x006F && cmd != 0x0070 { // SendRRData / SendUnitData
+		return "", "", false
+	}
+	// after 24 bytes header
+	if len(payload) < 24+8 {
+		return "", "", false
+	}
+	p := payload[24:]
+	itemCount := binary.LittleEndian.Uint16(p[6:8])
+	offset := 8
+	var cand []byte
+
+	for i := 0; i < int(itemCount); i++ {
+		if len(p) < offset+4 {
+			return "", "", false
+		}
+		typeID := binary.LittleEndian.Uint16(p[offset : offset+2])
+		length := binary.LittleEndian.Uint16(p[offset+2 : offset+4])
+		offset += 4
+		if len(p) < offset+int(length) {
+			return "", "", false
+		}
+		data := p[offset : offset+int(length)]
+		offset += int(length)
+		// 0x00B1 = ConnectedDataItem, 0x00B2 = UnconnectedDataItem
+		if typeID == 0x00B1 || typeID == 0x00B2 {
+			cand = data
+			break
+		}
+	}
+	if len(cand) == 0 {
+		return "", "", false
+	}
+	idx := findCIPHeader(cand)
+	if idx < 0 || idx+2 > len(cand) {
+		return "", "", false
+	}
+	svc := cand[idx]
+	svcHex = fmt.Sprintf("0x%02X", svc)
+	name := cipServiceNames[svc]
+	if name == "" {
+		name = "UnknownCIPService"
+	}
+	return name, svcHex, true
+}
+
+func findCIPHeader(b []byte) int {
+	maxStart := 8
+	if len(b) < 2 {
+		return -1
+	}
+	if len(b) < maxStart {
+		maxStart = len(b) - 2
+	}
+	for i := 0; i <= maxStart; i++ {
+		pathSize := int(b[i+1])
+		if 2+i+2*pathSize <= len(b) {
+			return i
+		}
+	}
+	return -1
+}
+
+/* =========================
+   Purdue edge classification
+========================= */
+
+func classifyEdge(proto Protocol, dstIsMulticast bool) (PurdueLevel, []string) {
+	notes := []string{}
+	switch proto {
+	case ProtoENIP_Implicit:
+		notes = append(notes, "ENIP implicit I/O (UDP/2222) → Level 1 bias")
+		return L1, notes
+	case ProtoENIP_Explicit:
+		notes = append(notes, "ENIP explicit messaging (TCP/44818) → Level 2 supervision/engineering")
+		return L2, notes
+	case ProtoModbus, ProtoModbusRTU:
+		notes = append(notes, "Modbus/TCP (502) often L1–L2; polling master L2, server L1")
+		return L1, notes
+	case ProtoDNP3:
+		notes = append(notes, "DNP3 (20000) often L2–L3 boundary")
+		return L2, notes
+	case ProtoBACnet:
+		notes = append(notes, "BACnet/IP (47808) typical L2 building/OT control")
+		return L2, notes
+	case ProtoProfinetDCP:
+		notes = append(notes, "Profinet DCP (Eth 0x8892) device discovery/config → Level 1")
+		return L1, notes
+	case ProtoProfinetRT:
+		notes = append(notes, "Profinet RT (real-time) I/O traffic → Level 1")
+		return L1, notes
+	case ProtoOPC:
+		notes = append(notes, "OPC/DCOM suggests L2↔L3 app comms")
+		return L2, notes
+	case ProtoOPCUA:
+		notes = append(notes, "OPC-UA (4840) modern L2-L3 secure communication")
+		return L2, notes
+	case ProtoS7Comm:
+		notes = append(notes, "S7Comm (102) Siemens PLC communication → Level 1-2")
+		return L1, notes
+	case ProtoFins:
+		notes = append(notes, "FINS (9600) Omron PLC protocol → Level 1")
+		return L1, notes
+	case ProtoOmronTCP:
+		notes = append(notes, "Omron TCP (9600) PLC communication → Level 1")
+		return L1, notes
+	case ProtoSlmp, ProtoMelsecQ:
+		notes = append(notes, "SLMP/MelsecQ (5007) Mitsubishi PLC → Level 1")
+		return L1, notes
+	case ProtoCCLink:
+		notes = append(notes, "CC-Link (1025) Mitsubishi fieldbus → Level 1")
+		return L1, notes
+	case ProtoSINEC:
+		notes = append(notes, "SINEC (8834) Siemens network protocol → Level 1-2")
+		return L1, notes
+	case ProtoProconOS:
+		notes = append(notes, "ProconOS (20547) process control → Level 2")
+		return L2, notes
+	case ProtoEGD:
+		notes = append(notes, "EGD (18246) GE Ethernet Global Data → Level 1-2")
+		return L1, notes
+	case ProtoSRTP:
+		notes = append(notes, "SRTP (18246) GE Service Request Transport → Level 2")
+		return L2, notes
+	}
+	if dstIsMulticast {
+		notes = append(notes, "Multicast destination → adapter/discovery (L1 bias)")
+		return L1, notes
+	}
+	return Unknown, notes
+}
+
+/* =========================
+   Best-effort host tagging
+========================= */
+
+func tagHostScores(h *Host) {
+	icsPorts := []uint16{2222, 44818, 502, 20000, 47808, 4840, 102, 9600, 5007, 1025, 20547, 18246, 8834}
+	itPorts := []uint16{53, 80, 443, 445, 1433, 5432, 135, 3389, 22, 23, 21, 25, 110, 143, 993, 995}
+	for _, p := range icsPorts {
+		if h.PortsSeen[p] {
+			h.ICSScore++
+		}
+	}
+	for _, p := range itPorts {
+		if h.PortsSeen[p] {
+			h.ITScore++
+		}
+	}
+}
+
+func setRole(h *Host, role string) {
+	if role == "" {
+		return
+	}
+	for _, r := range h.Roles {
+		if r == role {
+			return
+		}
+	}
+	h.Roles = append(h.Roles, role)
+}
+
+// Stronger heuristics without mapping:
+// - HMI/ENG (Level 2): initiates TCP/44818 to >=3 unique peers, has some IT services.
+// - PLC (L1/L2 edge): receives TCP/44818 from >=1 peer, participates in UDP/2222, low IT.
+// - I/O Adapter/Drive (L1): participates with UDP/2222 (often multicast), little/no 44818/IT.
+// - Level 3: strong IT footprint (DNS/HTTP/SMB/SQL) and low/no ICS.
+func tagHostHeuristic(h *Host) {
+	// Respect overrides if present
+	if h.OverrideLevel != nil {
+		h.InferredLevel = *h.OverrideLevel
+		if h.OverrideRole != "" {
+			setRole(h, h.OverrideRole)
+		}
+		return
+	}
+
+	tagHostScores(h)
+
+	// Get enhanced protocol statistics
+	initENIPPeers := len(h.PeersByProtoInitiated[ProtoENIP_Explicit])
+	rcvENIPPeers := len(h.PeersByProtoReceived[ProtoENIP_Explicit])
+	initENIP := h.InitiatedCounts[ProtoENIP_Explicit]
+	rcvENIP := h.ReceivedCounts[ProtoENIP_Explicit]
+	initIO := h.InitiatedCounts[ProtoENIP_Implicit]
+	rcvIO := h.ReceivedCounts[ProtoENIP_Implicit]
+	hasIO := (initIO + rcvIO) > 0
+
+	// Additional protocol analysis
+	hasModbus := h.InitiatedCounts[ProtoModbus] > 0 || h.ReceivedCounts[ProtoModbus] > 0
+	hasS7 := h.InitiatedCounts[ProtoS7Comm] > 0 || h.ReceivedCounts[ProtoS7Comm] > 0
+	hasOmron := h.InitiatedCounts[ProtoFins] > 0 || h.ReceivedCounts[ProtoFins] > 0 ||
+		h.InitiatedCounts[ProtoOmronTCP] > 0 || h.ReceivedCounts[ProtoOmronTCP] > 0
+	hasMitsubishi := h.InitiatedCounts[ProtoSlmp] > 0 || h.ReceivedCounts[ProtoSlmp] > 0 ||
+		h.InitiatedCounts[ProtoMelsecQ] > 0 || h.ReceivedCounts[ProtoMelsecQ] > 0
+	hasOPCUA := h.InitiatedCounts[ProtoOPCUA] > 0 || h.ReceivedCounts[ProtoOPCUA] > 0
+	hasDNP3 := h.InitiatedCounts[ProtoDNP3] > 0 || h.ReceivedCounts[ProtoDNP3] > 0
+	hasBACnet := h.InitiatedCounts[ProtoBACnet] > 0 || h.ReceivedCounts[ProtoBACnet] > 0
+
+	// Count total PLC protocols
+	plcProtocolCount := 0
+	if hasModbus {
+		plcProtocolCount++
+	}
+	if hasS7 {
+		plcProtocolCount++
+	}
+	if hasOmron {
+		plcProtocolCount++
+	}
+	if hasMitsubishi {
+		plcProtocolCount++
+	}
+	if hasIO {
+		plcProtocolCount++
+	}
+	if initENIP > 0 || rcvENIP > 0 {
+		plcProtocolCount++
+	}
+
+	// Classification based on communication patterns, device behavior, and vendor
+	switch {
+	// High-confidence Level 2 (HMI/Engineering Workstation)
+	case initENIPPeers >= 3 && h.ITScore >= 1:
+		h.InferredLevel = L2
+		setRole(h, "HMI/Engineering Station")
+	case hasOPCUA && h.InitiatedCounts[ProtoOPCUA] > h.ReceivedCounts[ProtoOPCUA] && h.ITScore >= 1:
+		h.InferredLevel = L2
+		setRole(h, "OPC-UA Client/HMI")
+	case (hasModbus || hasS7 || hasOmron || hasMitsubishi) &&
+		(h.InitiatedCounts[ProtoModbus]+h.InitiatedCounts[ProtoS7Comm]+
+			h.InitiatedCounts[ProtoFins]+h.InitiatedCounts[ProtoSlmp]) >
+			(h.ReceivedCounts[ProtoModbus]+h.ReceivedCounts[ProtoS7Comm]+
+				h.ReceivedCounts[ProtoFins]+h.ReceivedCounts[ProtoSlmp]) && h.ITScore >= 1:
+		h.InferredLevel = L2
+		setRole(h, "SCADA/Polling Master")
+
+	// High-confidence Level 1 (PLCs and Field Devices)
+	case rcvENIPPeers >= 1 && hasIO && h.ITScore <= 1:
+		h.InferredLevel = L1
+		if hasS7 {
+			setRole(h, "Siemens PLC")
+		} else if hasOmron {
+			setRole(h, "Omron PLC")
+		} else if hasMitsubishi {
+			setRole(h, "Mitsubishi PLC")
+		} else {
+			setRole(h, "Rockwell PLC")
+		}
+	case hasIO && h.ITScore == 0 && initENIP == 0 && rcvENIP <= 1:
+		h.InferredLevel = L1
+		setRole(h, "I/O Adapter/Drive")
+	case hasModbus && h.ReceivedCounts[ProtoModbus] > h.InitiatedCounts[ProtoModbus] && h.ITScore == 0:
+		h.InferredLevel = L1
+		setRole(h, "Modbus Slave/PLC")
+	case hasS7 && h.ReceivedCounts[ProtoS7Comm] > h.InitiatedCounts[ProtoS7Comm] && h.ITScore <= 1:
+		h.InferredLevel = L1
+		setRole(h, "Siemens S7 PLC")
+	case (hasOmron && h.ReceivedCounts[ProtoFins] > h.InitiatedCounts[ProtoFins]) ||
+		(h.ReceivedCounts[ProtoOmronTCP] > h.InitiatedCounts[ProtoOmronTCP]):
+		h.InferredLevel = L1
+		setRole(h, "Omron PLC")
+	case hasMitsubishi && (h.ReceivedCounts[ProtoSlmp] > h.InitiatedCounts[ProtoSlmp] ||
+		h.ReceivedCounts[ProtoMelsecQ] > h.InitiatedCounts[ProtoMelsecQ]):
+		h.InferredLevel = L1
+		setRole(h, "Mitsubishi PLC")
+
+	// Level 2/3 boundary protocols
+	case hasDNP3 && h.ITScore >= 1:
+		h.InferredLevel = L2
+		setRole(h, "DNP3 Master/RTU")
+	case hasBACnet:
+		h.InferredLevel = L2
+		setRole(h, "BACnet Device")
+	case hasOPCUA && h.ReceivedCounts[ProtoOPCUA] > h.InitiatedCounts[ProtoOPCUA]:
+		h.InferredLevel = L1
+		setRole(h, "OPC-UA Server")
+
+	// Strong IT, weak ICS → Level 3
+	case h.ITScore >= 2 && h.ICSScore == 0:
+		h.InferredLevel = L3
+		setRole(h, "IT Server/Workstation")
+	case h.ITScore >= 3:
+		h.InferredLevel = L3
+		setRole(h, "IT Infrastructure")
+
+	// Moderate ICS, low IT → Level 1 or 2 based on behavior
+	case plcProtocolCount >= 2 && h.ITScore <= 1:
+		if h.MulticastPeer || hasIO {
+			h.InferredLevel = L1
+			setRole(h, "Multi-Protocol PLC")
+		} else {
+			h.InferredLevel = L2
+			setRole(h, "Integration Server")
+		}
+	case h.ICSScore >= 1 && h.ITScore <= 1:
+		if h.MulticastPeer && hasIO {
+			h.InferredLevel = L1
+			setRole(h, "Field Device")
+		} else if initENIP > rcvENIP || h.InitiatedCounts[ProtoModbus] > h.ReceivedCounts[ProtoModbus] {
+			h.InferredLevel = L2
+			setRole(h, "Control Device")
+		} else {
+			h.InferredLevel = L1
+			setRole(h, "Field Device")
+		}
+
+	// LOW CONFIDENCE / FALLBACKS - Be more aggressive about classification
+	default:
+		if h.MulticastPeer && h.ICSScore >= 1 {
+			h.InferredLevel = L1
+			setRole(h, "Field Device")
+		} else if h.ITScore >= 2 {
+			h.InferredLevel = L3
+			setRole(h, "IT Device")
+		} else if h.ICSScore >= 1 {
+			h.InferredLevel = L2
+			setRole(h, "Industrial Device")
+		} else if h.ITScore >= 1 {
+			h.InferredLevel = L3
+			setRole(h, "Network Device")
+		} else {
+			// Default assignment based on port activity patterns
+			if len(h.PortsSeen) > 0 {
+				// Check for any industrial ports
+				industrialPorts := []uint16{2222, 44818, 502, 102, 9600, 4840, 20000}
+				hasIndustrial := false
+				for _, port := range industrialPorts {
+					if h.PortsSeen[port] {
+						hasIndustrial = true
+						break
+					}
+				}
+				if hasIndustrial {
+					h.InferredLevel = L1
+					setRole(h, "Field Device")
+				} else {
+					h.InferredLevel = L3
+					setRole(h, "Network Device")
+				}
+			} else {
+				h.InferredLevel = Unknown
+				setRole(h, "Unknown Device")
+			}
+		}
+	}
+}
+
+/* =========================
+   Writers
+========================= */
+
+func writeDOT(g *Graph, path string) error {
+	levels := map[PurdueLevel][]string{}
+	for ip, h := range g.Hosts {
+		levels[h.InferredLevel] = append(levels[h.InferredLevel], ip)
+	}
+	for k := range levels {
+		sort.Strings(levels[k])
+	}
+
+	var b strings.Builder
+	w := bufio.NewWriter(&b)
+	
+	// Simple, clear Purdue diagram
+	fmt.Fprintln(w, "digraph PurdueNetwork {")
+	fmt.Fprintln(w, `  rankdir=TB;`)
+	fmt.Fprintln(w, `  bgcolor=white;`)
+	fmt.Fprintln(w, `  node [shape=box, style="rounded,filled", fontname="Arial", fontsize=10];`)
+	fmt.Fprintln(w, `  edge [fontname="Arial", fontsize=8];`)
+	fmt.Fprintln(w, "")
+
+	// Create clear hierarchy: L3 → L2 → L1 
+	order := []PurdueLevel{L3, L2, L1}
+	
+	for _, lvl := range order {
+		if len(levels[lvl]) == 0 {
+			continue
+		}
+		
+		levelName := map[PurdueLevel]string{
+			L3: "Level 3 - Management",
+			L2: "Level 2 - Control", 
+			L1: "Level 1 - Field",
+		}[lvl]
+		
+		levelColor := map[PurdueLevel]string{
+			L3: "#e6f3ff",  // Light blue
+			L2: "#fff7e6",  // Light orange
+			L1: "#e8f6e8",  // Light green
+		}[lvl]
+		
+		borderColor := map[PurdueLevel]string{
+			L3: "#0066cc",  // Blue
+			L2: "#ff8800",  // Orange
+			L1: "#00aa44",  // Green
+		}[lvl]
+		
+		fmt.Fprintf(w, "  subgraph cluster_%s {\n", string(lvl))
+		fmt.Fprintf(w, "    label=\"%s\";\n", levelName)
+		fmt.Fprintf(w, "    style=filled;\n")
+		fmt.Fprintf(w, "    bgcolor=\"%s\";\n", levelColor)
+		fmt.Fprintf(w, "    color=\"%s\";\n", borderColor)
+		fmt.Fprintf(w, "    penwidth=2;\n")
+		fmt.Fprintf(w, "    fontsize=14;\n")
+		fmt.Fprintf(w, "    fontname=\"Arial Bold\";\n")
+		
+		for _, ip := range levels[lvl] {
+			host := g.Hosts[ip]
+			
+			// Simple, clear label
+			label := ip
+			if strings.HasPrefix(ip, "192.168.") {
+				label = strings.TrimPrefix(ip, "192.168.")
+			}
+			
+			if host.Hostname != "" {
+				label = host.Hostname + "\\n" + label
+			}
+			
+			if len(host.Roles) > 0 {
+				role := host.Roles[0]
+				if strings.Contains(role, "PLC") {
+					label += "\\n[PLC]"
+				} else if strings.Contains(role, "HMI") {
+					label += "\\n[HMI]"
+				} else if strings.Contains(role, "Server") {
+					label += "\\n[Server]"
+				}
+			}
+			
+			if host.Vendor != "" {
+				vendor := host.Vendor
+				if len(vendor) > 8 {
+					vendor = vendor[:8]
+				}
+				label += "\\n(" + vendor + ")"
+			}
+			
+			nodeColor := levelColor
+			if strings.Contains(strings.ToLower(label), "plc") {
+				nodeColor = "#ccffcc"  // Light green for PLCs
+			} else if strings.Contains(strings.ToLower(label), "hmi") {
+				nodeColor = "#ffffcc"  // Light yellow for HMIs
+			}
+			
+			fmt.Fprintf(w, "    \"%s\" [label=\"%s\", fillcolor=\"%s\"];\n", 
+				ip, label, nodeColor)
+		}
+		fmt.Fprintln(w, "  }")
+		fmt.Fprintln(w, "")
+	}
+
+	// Only show industrial protocol connections
+	for _, e := range g.Edges {
+		srcHost := g.Hosts[e.Src]
+		dstHost := g.Hosts[e.Dst]
+		
+		// Skip unknown devices
+		if srcHost.InferredLevel == Unknown || dstHost.InferredLevel == Unknown {
+			continue
+		}
+		
+		// Only show EtherNet/IP and Modbus for clarity
+		protocolName := string(e.Protocol)
+		if strings.Contains(protocolName, "ENIP") {
+			fmt.Fprintf(w, "  \"%s\" -> \"%s\" [label=\"EtherNet/IP\", color=\"#00aa44\"];\n", 
+				e.Src, e.Dst)
+		} else if strings.Contains(protocolName, "Modbus") {
+			fmt.Fprintf(w, "  \"%s\" -> \"%s\" [label=\"Modbus\", color=\"#ff8800\"];\n", 
+				e.Src, e.Dst)
+		}
+	}
+	
+	fmt.Fprintln(w, "}")
+	w.Flush()
+	return os.WriteFile(path, []byte(b.String()), 0644)
+}
+	levels := map[PurdueLevel][]string{}
+	for ip, h := range g.Hosts {
+		levels[h.InferredLevel] = append(levels[h.InferredLevel], ip)
+	}
+	for k := range levels {
+		sort.Strings(levels[k])
+	}
+
+	var b strings.Builder
+	w := bufio.NewWriter(&b)
+
+	// Clear Purdue Model layout - more compact and readable
+	fmt.Fprintln(w, "digraph Industrial_Network {")
+	fmt.Fprintln(w, `  graph [rankdir=TB, splines=true, ranksep=1.0, nodesep=0.8, bgcolor=white];`)
+	fmt.Fprintln(w, `  node [shape=box, style="rounded,filled", fontname="Arial Bold", fontsize=10];`)
+	fmt.Fprintln(w, `  edge [fontname="Arial", fontsize=8, arrowsize=0.7];`)
+	fmt.Fprintln(w, "")
+
+	// Stack levels vertically: L3 (top) → L2 (middle) → L1 (bottom) → Unknown
+	order := []PurdueLevel{L3, L2, L1, Unknown}
+	for _, lvl := range order {
+		if len(levels[lvl]) == 0 {
+			continue
+		}
+
+		// Traditional Purdue colors and styling
+		color := map[PurdueLevel]string{
+			L1:      "#e8f5e8", // Very light green - Field level
+			L2:      "#fff4e6", // Very light orange - Control level
+			L3:      "#e6f2ff", // Very light blue - Management level
+			Unknown: "#f5f5f5", // Light gray
+		}[lvl]
+
+		borderColor := map[PurdueLevel]string{
+			L1:      "#2d8659", // Dark green
+			L2:      "#cc5500", // Dark orange
+			L3:      "#0066cc", // Dark blue
+			Unknown: "#666666", // Dark gray
+		}[lvl]
+
+		levelName := map[PurdueLevel]string{
+			L1:      "Level 1: Field Devices",
+			L2:      "Level 2: Control & HMI",
+			L3:      "Level 3: Management & IT",
+			Unknown: "Other Devices",
+		}[lvl]
+
+		// Skip Unknown if it has too many devices (clutters diagram)
+		if lvl == Unknown && len(levels[lvl]) > 10 {
+			continue
+		}
+
+		fmt.Fprintf(w, "  subgraph cluster_%s {\n", strings.ReplaceAll(string(lvl), " ", "_"))
+		fmt.Fprintf(w, "    label=\"%s\";\n", levelName)
+		fmt.Fprintf(w, "    style=filled; bgcolor=\"%s\"; color=\"%s\"; penwidth=2;\n", color, borderColor)
+		fmt.Fprintf(w, "    fontsize=12; fontname=\"Arial Bold\"; fontcolor=\"%s\";\n", borderColor)
+		fmt.Fprintf(w, "    margin=10;\n")
+
+		for _, ip := range levels[lvl] {
+			host := g.Hosts[ip]
+
+			// Build comprehensive device label with vendor and device info
+			displayName := ""
+
+			// Primary identifier priority: hostname > vendor+devicename > short IP
+			if host.Hostname != "" {
+				displayName = host.Hostname
+			} else if host.Vendor != "" && host.DeviceName != "" {
+				displayName = strings.Replace(host.DeviceName, host.Vendor+" ", "", 1)
+				if displayName == host.DeviceName {
+					displayName = host.DeviceName
+				}
+			} else if host.DeviceName != "" {
+				displayName = host.DeviceName
+			} else {
+				// Shortened IP display
+				if strings.HasPrefix(ip, "192.168.") {
+					displayName = strings.TrimPrefix(ip, "192.168.")
+				} else if strings.HasPrefix(ip, "10.") {
+					displayName = strings.TrimPrefix(ip, "10.")
+				} else {
+					displayName = ip
+				}
+			}
+
+			// Add vendor information if available and not already included
+			if host.Vendor != "" && !strings.Contains(displayName, host.Vendor) {
+				displayName += "\\n[" + host.Vendor + "]"
+			}
+
+			// Add primary role
+			if len(host.Roles) > 0 {
+				role := host.Roles[0]
+				// Clean up role names
+				role = strings.ReplaceAll(role, "Engineering Station", "ENG Station")
+				role = strings.ReplaceAll(role, "I/O Adapter/Drive", "I/O Device")
+				role = strings.ReplaceAll(role, "Server/Workstation", "Server")
+				displayName += "\\n(" + role + ")"
+			}
+
+			// Add IP as secondary info if we used hostname/device name
+			if host.Hostname != "" || host.DeviceName != "" {
+				shortIP := ip
+				if strings.HasPrefix(ip, "192.168.") {
+					shortIP = strings.TrimPrefix(ip, "192.168.")
+				} else if strings.HasPrefix(ip, "10.") {
+					shortIP = strings.TrimPrefix(ip, "10.")
+				}
+				displayName += "\\n" + shortIP
+			}
+
+			// Configuration override indicator
+			if host.OverrideLevel != nil {
+				displayName += "\\n[configured]"
+			}
+
+			// Vendor-specific node styling
+			nodeColor := color
+			textColor := borderColor
+			if strings.Contains(strings.ToLower(host.Vendor), "siemens") {
+				nodeColor = "#e8f0ff" // Light blue for Siemens
+				textColor = "#003d82"
+			} else if strings.Contains(strings.ToLower(host.Vendor), "rockwell") ||
+				strings.Contains(strings.ToLower(host.Vendor), "allen-bradley") {
+				nodeColor = "#ffe8e8" // Light red for Rockwell
+				textColor = "#cc0000"
+			} else if strings.Contains(strings.ToLower(host.Vendor), "schneider") {
+				nodeColor = "#e8ffe8" // Lighter green for Schneider
+				textColor = "#006600"
+			} else if strings.Contains(strings.ToLower(host.Vendor), "omron") {
+				nodeColor = "#fff0e8" // Light orange for Omron
+				textColor = "#cc6600"
+			} else if strings.Contains(strings.ToLower(host.Vendor), "mitsubishi") {
+				nodeColor = "#f0e8ff" // Light purple for Mitsubishi
+				textColor = "#6600cc"
+			} else if strings.Contains(strings.ToLower(displayName), "plc") {
+				nodeColor = "#d4edda" // Emphasize PLCs
+				textColor = "#155724"
+			} else if strings.Contains(strings.ToLower(displayName), "hmi") ||
+				strings.Contains(strings.ToLower(displayName), "eng") {
+				nodeColor = "#fff3cd" // Emphasize HMIs
+				textColor = "#856404"
+			}
+
+			fmt.Fprintf(w, "    \"%s\" [label=\"%s\", fillcolor=\"%s\", fontcolor=\"%s\", penwidth=2];\n",
+				ip, displayName, nodeColor, textColor)
+		}
+		fmt.Fprintln(w, "  }")
+		fmt.Fprintln(w, "")
+	}
+
+	// Add rank constraints to enforce proper vertical ordering
+	fmt.Fprintln(w, "  // Enforce Purdue level vertical ordering")
+	if len(levels[L3]) > 0 && len(levels[L2]) > 0 {
+		fmt.Fprintf(w, "  \"%s\" -> \"%s\" [style=invis, weight=10];\n", levels[L3][0], levels[L2][0])
+	}
+	if len(levels[L2]) > 0 && len(levels[L1]) > 0 {
+		fmt.Fprintf(w, "  \"%s\" -> \"%s\" [style=invis, weight=10];\n", levels[L2][0], levels[L1][0])
+	}
+	fmt.Fprintln(w, "")
+
+	// Protocol-focused edge rendering with proper spacing
+	protocolGroups := make(map[Protocol][]*Edge)
+	for _, e := range g.Edges {
+		protocolGroups[e.Protocol] = append(protocolGroups[e.Protocol], e)
+	}
+
+	// Render edges grouped by protocol with industrial styling
+	for proto, edges := range protocolGroups {
+		if len(edges) == 0 {
+			continue
+		}
+
+		// Industrial protocol styling
+		var edgeColor, edgeStyle string
+		protocolName := string(proto)
+
+		switch {
+		case strings.Contains(protocolName, "ENIP"):
+			edgeColor = "#2d8659" // Industrial green
+			edgeStyle = "bold"
+			protocolName = strings.ReplaceAll(protocolName, "ENIP-TCP-44818", "EtherNet/IP")
+			protocolName = strings.ReplaceAll(protocolName, "ENIP-UDP-2222", "EtherNet/IP I/O")
+		case strings.Contains(protocolName, "Modbus"):
+			edgeColor = "#cc5500" // Industrial orange
+			edgeStyle = "solid"
+			protocolName = "Modbus TCP"
+		case strings.Contains(protocolName, "S7"):
+			edgeColor = "#003d82" // Siemens blue
+			edgeStyle = "solid"
+			protocolName = "Siemens S7"
+		case strings.Contains(protocolName, "OPC"):
+			edgeColor = "#6600cc" // Purple for OPC
+			edgeStyle = "dashed"
+			if strings.Contains(protocolName, "UA") {
+				protocolName = "OPC-UA"
+			} else {
+				protocolName = "OPC Classic"
+			}
+		case strings.Contains(protocolName, "DNP3"):
+			edgeColor = "#cc0066" // Magenta for DNP3
+			edgeStyle = "solid"
+			protocolName = "DNP3"
+		case strings.Contains(protocolName, "BACnet"):
+			edgeColor = "#0066cc" // Blue for BACnet
+			edgeStyle = "solid"
+			protocolName = "BACnet/IP"
+		default:
+			edgeColor = "#666666" // Gray for others
+			edgeStyle = "solid"
+		}
+
+		// Group bidirectional edges
+		processedPairs := make(map[string]bool)
+
+		for _, e := range edges {
+			pairKey := e.Src + "<->" + e.Dst
+			reversePairKey := e.Dst + "<->" + e.Src
+
+			if processedPairs[pairKey] || processedPairs[reversePairKey] {
+				continue
+			}
+			processedPairs[pairKey] = true
+
+			// Clean, protocol-focused edge label
+			label := protocolName
+
+			// Add port information for context
+			if e.Protocol == ProtoENIP_Explicit {
+				label += "\\nTCP/44818"
+			} else if e.Protocol == ProtoENIP_Implicit {
+				label += "\\nUDP/2222"
+			} else if e.Protocol == ProtoModbus {
+				label += "\\nTCP/502"
+			} else if e.Protocol == ProtoS7Comm {
+				label += "\\nTCP/102"
+			} else if e.Protocol == ProtoOPCUA {
+				label += "\\nTCP/4840"
+			}
+
+			// Add CIP service if available and relevant
+			if e.CIPService != "" && e.CIPService != "UnknownCIPService" {
+				service := e.CIPService
+				service = strings.ReplaceAll(service, "GetAttrSingle", "Get Attr")
+				service = strings.ReplaceAll(service, "SetAttrSingle", "Set Attr")
+				service = strings.ReplaceAll(service, "Service", "")
+				if len(service) < 12 {
+					label += "\\n" + service
+				}
+			}
+
+			fmt.Fprintf(w, "  \"%s\" -> \"%s\" [label=\"%s\", color=\"%s\", style=%s, penwidth=2, fontcolor=\"%s\"];\n",
+				e.Src, e.Dst, label, edgeColor, edgeStyle, edgeColor)
+		}
+	}
+
+	fmt.Fprintln(w, "}")
+	w.Flush()
+	return os.WriteFile(path, []byte(b.String()), 0644)
+}
+
+func writeJSON(g *Graph, path string) error {
+	out := struct {
+		Hosts map[string]*Host `json:"hosts"`
+		Edges []*Edge          `json:"edges"`
+	}{
+		Hosts: g.Hosts,
+	}
+	for _, e := range g.Edges {
+		out.Edges = append(out.Edges, e)
+	}
+	data, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+/* =========================
+   Main
+========================= */
+
+func main() {
+	pcapPath := flag.String("pcap", "", "Path to pcap/pcapng file")
+	outDOT := flag.String("out", "", "Output Graphviz DOT path (default: diagrams/$pcapname/diagram.dot)")
+	outJSON := flag.String("json", "", "Output JSON path (default: diagrams/$pcapname/diagram.json)")
+	iface := flag.String("iface", "", "Optional live capture interface (alternative to -pcap)")
+	snaplen := flag.Int("snaplen", 262144, "Snaplen for live capture")
+	cfgPath := flag.String("config", "", "Optional YAML with subnet→Purdue mappings")
+	generateImages := flag.Bool("images", true, "Generate PNG/SVG images from DOT file (requires Graphviz)")
+
+	// Diagram simplification options
+	summaryMode := flag.Bool("summary", false, "Generate simplified summary diagram (groups similar connections)")
+	hideUnknown := flag.Bool("hide-unknown", false, "Hide devices with unknown Purdue levels")
+	maxNodes := flag.Int("max-nodes", 0, "Maximum nodes to show (0 = unlimited, shows top communicators)")
+	showHostnames := flag.Bool("hostnames", true, "Attempt to resolve and show hostnames for devices")
+
+	flag.Parse()
+
+	if *pcapPath == "" && *iface == "" {
+		log.Fatal("provide -pcap path or -iface for live capture")
+	}
+
+	// Create output directory structure
+	outputDir, err := createOutputDir(*pcapPath)
+	if err != nil {
+		log.Fatalf("output directory creation error: %v", err)
+	}
+
+	// Set default output paths if not specified
+	if *outDOT == "" {
+		*outDOT = filepath.Join(outputDir, "diagram.dot")
+	}
+	if *outJSON == "" {
+		*outJSON = filepath.Join(outputDir, "diagram.json")
+	}
+
+	log.Printf("Output directory: %s", outputDir)
+	log.Printf("DOT file: %s", *outDOT)
+	log.Printf("JSON file: %s", *outJSON)
+
+	mapping, err := loadMapping(*cfgPath)
+	if err != nil {
+		if *cfgPath != "" {
+			log.Printf("Warning: config load error: %v", err)
+			log.Printf("Continuing with intelligent heuristic-based classification...")
+		}
+		mapping = &MappingTable{} // Use empty mapping table
+	}
+
+	g := newGraph()
+	var handle *pcap.Handle
+
+	if *pcapPath != "" {
+		handle, err = pcap.OpenOffline(*pcapPath)
+		if err != nil {
+			log.Fatalf("pcap open error: %v", err)
+		}
+		log.Printf("Analyzing pcap file: %s", *pcapPath)
+	} else {
+		handle, err = pcap.OpenLive(*iface, int32(*snaplen), true, pcap.BlockForever)
+		if err != nil {
+			log.Fatalf("live capture error: %v", err)
+		}
+		log.Printf("Starting live capture on interface: %s", *iface)
+	}
+	defer handle.Close()
+
+	src := gopacket.NewPacketSource(handle, handle.LinkType())
+	packetCount := 0
+	for pkt := range src.Packets() {
+		packetCount++
+		if packetCount%1000 == 0 {
+			log.Printf("Processed %d packets...", packetCount)
+		}
+
+		ethLayer := pkt.Layer(layers.LayerTypeEthernet)
+		ip4 := pkt.Layer(layers.LayerTypeIPv4)
+		ip6 := pkt.Layer(layers.LayerTypeIPv6)
+		tcpL := pkt.Layer(layers.LayerTypeTCP)
+		udpL := pkt.Layer(layers.LayerTypeUDP)
+
+		var eth *layers.Ethernet
+		if ethLayer != nil {
+			eth = ethLayer.(*layers.Ethernet)
+		}
+
+		var sIP, dIP net.IP
+		ipBased := true
+		if ip4 != nil {
+			ip := ip4.(*layers.IPv4)
+			sIP = ip.SrcIP
+			dIP = ip.DstIP
+		} else if ip6 != nil {
+			ip := ip6.(*layers.IPv6)
+			sIP = ip.SrcIP
+			dIP = ip.DstIP
+		} else {
+			ipBased = false
+		}
+
+		// Profinet DCP (L2 only)
+		if !ipBased && eth != nil && eth.EthernetType == layers.EthernetType(0x8892) {
+			srcID := eth.SrcMAC.String()
+			dstID := eth.DstMAC.String()
+			srcHost := g.getHost(srcID)
+			dstHost := g.getHost(dstID)
+
+			proto, _, _ := protFromPacket(nil, nil, eth)
+			key := FlowKey{SrcIP: srcID, DstIP: dstID, Proto: proto}
+			edge := g.Edges[key]
+			if edge == nil {
+				edge = &Edge{
+					Src:       srcID,
+					Dst:       dstID,
+					Protocol:  proto,
+					FirstSeen: pkt.Metadata().Timestamp,
+				}
+				g.Edges[key] = edge
+			}
+			edge.Packets++
+			edge.Bytes += int64(len(pkt.Data()))
+			edge.LastSeen = pkt.Metadata().Timestamp
+
+			lvl, notes := classifyEdge(proto, false)
+			if edge.InferredLevel == Unknown {
+				edge.InferredLevel = lvl
+			}
+			edge.Notes = append(edge.Notes, notes...)
+			_ = srcHost
+			_ = dstHost
+			continue
+		}
+		if !ipBased {
+			continue
+		}
+
+		var tcp *layers.TCP
+		var udp *layers.UDP
+		if tcpL != nil {
+			tcp = tcpL.(*layers.TCP)
+		}
+		if udpL != nil {
+			udp = udpL.(*layers.UDP)
+		}
+
+		srcID := sIP.String()
+		dstID := dIP.String()
+		srcHost := g.getHost(srcID)
+		dstHost := g.getHost(dstID)
+
+		// Extract and store MAC addresses for vendor identification
+		if eth != nil {
+			srcHost.MAC = eth.SrcMAC.String()
+			dstHost.MAC = eth.DstMAC.String()
+			// Resolve vendor from MAC OUI
+			if srcHost.Vendor == "" {
+				srcHost.Vendor = lookupOUI(srcHost.MAC)
+			}
+			if dstHost.Vendor == "" {
+				dstHost.Vendor = lookupOUI(dstHost.MAC)
+			}
+		}
+
+		// Apply mapping overrides if present
+		mapping.apply(srcHost)
+		mapping.apply(dstHost)
+
+		// Track seen ports (for scoring)
+		if tcp != nil {
+			srcHost.PortsSeen[uint16(tcp.SrcPort)] = true
+			dstHost.PortsSeen[uint16(tcp.DstPort)] = true
+		}
+		if udp != nil {
+			srcHost.PortsSeen[uint16(udp.SrcPort)] = true
+			dstHost.PortsSeen[uint16(udp.DstPort)] = true
+		}
+		if isMulticastIP(dIP) {
+			dstHost.MulticastPeer = true
+		}
+
+		// Protocol + edge record
+		proto, _, _ := protFromPacket(tcp, udp, eth)
+		key := FlowKey{SrcIP: srcID, DstIP: dstID, Proto: proto}
+		edge := g.Edges[key]
+		if edge == nil {
+			edge = &Edge{
+				Src:       srcID,
+				Dst:       dstID,
+				Protocol:  proto,
+				FirstSeen: pkt.Metadata().Timestamp,
+			}
+			g.Edges[key] = edge
+		}
+		edge.Packets++
+		edge.Bytes += int64(len(pkt.Data()))
+		edge.LastSeen = pkt.Metadata().Timestamp
+
+		// Edge-level Purdue hint
+		lvl, notes := classifyEdge(proto, isMulticastIP(dIP))
+		if edge.InferredLevel == Unknown {
+			edge.InferredLevel = lvl
+		}
+		if len(notes) > 0 {
+			edge.Notes = append(edge.Notes, notes...)
+		}
+
+		// CIP sniffer for TCP/44818
+		if proto == ProtoENIP_Explicit && tcp != nil {
+			app := tcp.LayerPayload()
+			if name, hex, ok := parseENIP_CIP_FromTCP(app); ok {
+				edge.CIPService = name
+				edge.CIPServiceCode = hex
+			}
+		}
+
+		// Per-host flow stats for best-effort classification
+		srcHost.ensureMaps()
+		dstHost.ensureMaps()
+
+		if srcHost.PeersByProtoInitiated[proto] == nil {
+			srcHost.PeersByProtoInitiated[proto] = map[string]bool{}
+		}
+		srcHost.PeersByProtoInitiated[proto][dstID] = true
+		srcHost.InitiatedCounts[proto]++
+
+		if dstHost.PeersByProtoReceived[proto] == nil {
+			dstHost.PeersByProtoReceived[proto] = map[string]bool{}
+		}
+		dstHost.PeersByProtoReceived[proto][srcID] = true
+		dstHost.ReceivedCounts[proto]++
+	}
+
+	log.Printf("Processed %d total packets", packetCount)
+	log.Printf("Found %d hosts and %d communication flows", len(g.Hosts), len(g.Edges))
+
+	// Best-effort tagging and hostname resolution
+	for _, h := range g.Hosts {
+		tagHostHeuristic(h)
+
+		// Resolve hostname if requested
+		if *showHostnames {
+			h.Hostname = resolveHostname(h.IP)
+		}
+
+		// Detect device name from protocols/roles
+		h.DeviceName = detectDeviceName(h)
+	}
+
+	log.Printf("Found %d hosts and %d communication flows before filtering", len(g.Hosts), len(g.Edges))
+
+	// Apply relationship-focused filtering (no packet count filtering)
+	var finalGraph *Graph
+	if *summaryMode {
+		log.Printf("Creating summary diagram...")
+		filteredGraph := filterGraph(g, *hideUnknown, *maxNodes)
+		finalGraph = createSummaryGraph(filteredGraph)
+	} else {
+		log.Printf("Applying relationship-focused filters: hide-unknown=%v, max-nodes=%d", *hideUnknown, *maxNodes)
+		finalGraph = filterGraph(g, *hideUnknown, *maxNodes)
+	}
+
+	log.Printf("Final diagram has %d hosts and %d communication flows", len(finalGraph.Hosts), len(finalGraph.Edges))
+
+	// Outputs
+	if err := writeDOT(finalGraph, *outDOT); err != nil {
+		log.Fatalf("write DOT: %v", err)
+	}
+	log.Printf("✓ Generated DOT file: %s", *outDOT)
+
+	if err := writeJSON(g, *outJSON); err != nil { // Always write full JSON data
+		log.Fatalf("write JSON: %v", err)
+	}
+	log.Printf("✓ Generated JSON file: %s", *outJSON)
+
+	// Generate images if requested and Graphviz is available
+	if *generateImages {
+		if err := generateImage(*outDOT, outputDir); err != nil {
+			log.Printf("Image generation error: %v", err)
+		}
+	}
+
+	// Summary
+	fmt.Printf("\n=== CIPgram Analysis Complete ===\n")
+	fmt.Printf("Output directory: %s\n", outputDir)
+	fmt.Printf("• DOT file: %s\n", *outDOT)
+	fmt.Printf("• JSON file: %s\n", *outJSON)
+	if *generateImages {
+		fmt.Printf("• PNG/SVG images generated (if Graphviz available)\n")
+	}
+	fmt.Printf("Analyzed %d hosts across %d communication flows\n", len(g.Hosts), len(g.Edges))
+}
