@@ -41,9 +41,9 @@ digraph HierarchicalNetwork {
     label="Aggregation Networks";
     style=filled;
     fillcolor="#ffe6e6";
-    agg_net0 [label="IT-OT Network\n192.168.0.0/24\nEtherNet/IP", shape=ellipse, style=filled, fillcolor="#ff9999"];
-    agg_net1 [label="IT-OT Network\n10.1.1.0/24\nEtherNet/IP", shape=ellipse, style=filled, fillcolor="#ff9999"];
-    agg_net2 [label="IT-OT Network\n141.81.0.0/24\nEtherNet/IP", shape=ellipse, style=filled, fillcolor="#ff9999"];
+    agg_net0 [label="IT-OT Network\n141.81.0.0/24\nEtherNet/IP", shape=ellipse, style=filled, fillcolor="#ff9999"];
+    agg_net1 [label="IT-OT Network\n192.168.0.0/24\nEtherNet/IP", shape=ellipse, style=filled, fillcolor="#ff9999"];
+    agg_net2 [label="IT-OT Network\n10.1.1.0/24\nEtherNet/IP", shape=ellipse, style=filled, fillcolor="#ff9999"];
     agg_net3 [label="IT-OT Network\n192.168.1.0/24\nEtherNet/IP", shape=ellipse, style=filled, fillcolor="#ff9999"];
   }
 
@@ -53,27 +53,25 @@ digraph HierarchicalNetwork {
     label="Computing Servers";
     style=filled;
     fillcolor="#f5f5f5";
-    device_0 [label="192.168.10.121\nRockwell Aut...", shape=box, style=filled, fillcolor="#ccffcc"];
-    device_1 [label="192.168.10.140\nField Device", shape=box, style=filled, fillcolor="#ccffcc"];
-    device_2 [label="192.168.10.120\nRockwell Aut...", shape=ellipse, style=filled, fillcolor="#ffcccc"];
-    device_3 [label="192.168.10.107\nSuper Micro ...", shape=diamond, style=filled, fillcolor="#ccccff"];
-    device_4 [label="192.168.10.204\nNetwork Devi...", shape=diamond, style=filled, fillcolor="#ccccff"];
-    device_5 [label="192.168.10.230\nDell", shape=diamond, style=filled, fillcolor="#ccccff"];
-    device_6 [label="192.168.0.21\nDell", shape=diamond, style=filled, fillcolor="#ccccff"];
-    device_7 [label="192.168.0.47\nDell", shape=box, style=filled, fillcolor="#ccffcc"];
-    device_8 [label="192.168.0.65\nINVENTEC COR...", shape=diamond, style=filled, fillcolor="#ccccff"];
-    device_9 [label="192.168.0.255\nField Device", shape=box, style=filled, fillcolor="#ccffcc"];
-    device_10 [label="10.1.1.167\nIntel Corpor...", shape=diamond, style=filled, fillcolor="#ccccff"];
-    device_11 [label="141.81.0.43\nRockwell Aut...", shape=ellipse, style=filled, fillcolor="#ffcccc"];
-    device_12 [label="141.81.0.10\nHewlett Pack...", shape=diamond, style=filled, fillcolor="#ccccff"];
-    device_13 [label="141.81.0.83\nRockwell Aut...", shape=ellipse, style=filled, fillcolor="#ffcccc"];
-    device_14 [label="141.81.0.23\nRockwell Aut...", shape=ellipse, style=filled, fillcolor="#ffcccc"];
-    device_15 [label="141.81.0.63\nRockwell Aut...", shape=ellipse, style=filled, fillcolor="#ffcccc"];
-    device_16 [label="192.168.1.69\nVMware,", shape=diamond, style=filled, fillcolor="#ccccff"];
-    device_17 [label="192.168.1.22\nRockwell Aut...", shape=octagon, style=filled, fillcolor="#ffddff"];
-    device_18 [label="192.168.1.30\nRockwell Aut...", shape=box, style=filled, fillcolor="#ccffcc"];
-    device_19 [label="192.168.1.24\nRockwell Aut...", shape=octagon, style=filled, fillcolor="#ffddff"];
-    device_20 [label="192.168.1.10\nVMware,", shape=diamond, style=filled, fillcolor="#ccccff"];
+    device_0 [label="141.81.0.10\nHewlett Pack...", shape=diamond, style=filled, fillcolor="#ccccff"];
+    device_1 [label="141.81.0.83\nRockwell Aut...", shape=ellipse, style=filled, fillcolor="#ffcccc"];
+    device_2 [label="141.81.0.43\nRockwell Aut...", shape=ellipse, style=filled, fillcolor="#ffcccc"];
+    device_3 [label="141.81.0.63\nRockwell Aut...", shape=ellipse, style=filled, fillcolor="#ffcccc"];
+    device_4 [label="141.81.0.23\nRockwell Aut...", shape=ellipse, style=filled, fillcolor="#ffcccc"];
+    device_5 [label="192.168.0.21\nDell", shape=diamond, style=filled, fillcolor="#ccccff"];
+    device_6 [label="192.168.0.30\nDell", shape=box, style=filled, fillcolor="#ccffcc"];
+    device_7 [label="192.168.10.140\nField Device", shape=box, style=filled, fillcolor="#ccffcc"];
+    device_8 [label="192.168.10.121\nRockwell Aut...", shape=box, style=filled, fillcolor="#ccffcc"];
+    device_9 [label="192.168.10.120\nRockwell Aut...", shape=ellipse, style=filled, fillcolor="#ffcccc"];
+    device_10 [label="192.168.10.255\nField Device", shape=box, style=filled, fillcolor="#ccffcc"];
+    device_11 [label="192.168.10.204\nNetwork Devi...", shape=diamond, style=filled, fillcolor="#ccccff"];
+    device_12 [label="192.168.10.248\nVMware,", shape=diamond, style=filled, fillcolor="#ccccff"];
+    device_13 [label="10.1.1.167\nIntel Corpor...", shape=diamond, style=filled, fillcolor="#ccccff"];
+    device_14 [label="192.168.1.69\nVMware,", shape=diamond, style=filled, fillcolor="#ccccff"];
+    device_15 [label="192.168.1.10\nVMware,", shape=diamond, style=filled, fillcolor="#ccccff"];
+    device_16 [label="192.168.1.24\nRockwell Aut...", shape=octagon, style=filled, fillcolor="#ffddff"];
+    device_17 [label="192.168.1.30\nRockwell Aut...", shape=box, style=filled, fillcolor="#ccffcc"];
+    device_18 [label="192.168.1.22\nRockwell Aut...", shape=octagon, style=filled, fillcolor="#ffddff"];
   }
 
   // Hierarchical network connections
@@ -93,17 +91,15 @@ digraph HierarchicalNetwork {
   agg_net0 -> device_7 [label="L2"];
   agg_net0 -> device_8 [label="L2"];
   agg_net0 -> device_9 [label="L2"];
-  agg_net1 -> device_10 [label="L2"];
-  agg_net2 -> device_12 [label="L2"];
+  agg_net0 -> device_10 [label="L2"];
+  agg_net1 -> device_11 [label="L2"];
+  agg_net1 -> device_12 [label="L2"];
   agg_net2 -> device_13 [label="L2"];
-  agg_net2 -> device_14 [label="L2"];
-  agg_net2 -> device_15 [label="L2"];
-  agg_net2 -> device_16 [label="L2"];
+  agg_net3 -> device_15 [label="L2"];
+  agg_net3 -> device_16 [label="L2"];
   agg_net3 -> device_17 [label="L2"];
   agg_net3 -> device_18 [label="L2"];
   agg_net3 -> device_19 [label="L2"];
-  agg_net3 -> device_20 [label="L2"];
-  agg_net3 -> device_21 [label="L2"];
 
   // Legend: Device Shapes
   subgraph cluster_legend {

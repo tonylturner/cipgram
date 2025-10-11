@@ -73,9 +73,9 @@ func generatePurdueSVG(g *Graph, outputDir string) (string, error) {
 		return "", fmt.Errorf("failed to write SVG: %v", err)
 	}
 
-	// Convert SVG to PNG
+	// Convert SVG to PNG using embedded tools
 	pngPath := filepath.Join(outputDir, "purdue_diagram.png")
-	err = convertSVGToPNG(svgPath, pngPath)
+	err = convertSVGToPNGEmbedded(svgPath, pngPath)
 	if err != nil {
 		// If conversion fails, still return the SVG path and log the warning
 		fmt.Printf("Warning: Could not convert SVG to PNG: %v\n", err)

@@ -32,33 +32,26 @@ func (g *FirewallDiagramGenerator) GenerateNetworkTopologyDiagram(outputPath str
 	w := bufio.NewWriter(file)
 	defer w.Flush()
 
-	// Generate network topology diagram
+	// Generate firewall-centric network topology diagram
 	fmt.Fprintln(w, "digraph FirewallTopology {")
-	fmt.Fprintln(w, "  rankdir=TB;")
+	fmt.Fprintln(w, "  rankdir=LR;") // Left-to-right layout works better for firewall diagrams
 	fmt.Fprintln(w, "  node [fontname=\"Arial\", fontsize=10];")
 	fmt.Fprintln(w, "  edge [fontname=\"Arial\", fontsize=9];")
 	fmt.Fprintln(w, "  bgcolor=white;")
-	fmt.Fprintln(w, "  concentrate=true;")
+	fmt.Fprintln(w, "  splines=ortho;") // Use orthogonal lines for cleaner look
+	fmt.Fprintln(w, "  nodesep=1.0;")
+	fmt.Fprintln(w, "  ranksep=2.0;")
 	fmt.Fprintln(w, "")
 
 	// Add title and metadata
-	fmt.Fprintf(w, "  label=\"Network Topology from %s\\nGenerated: %s\";\n",
+	fmt.Fprintf(w, "  label=\"Firewall Network Topology\\n%s\\nGenerated: %s\";\n",
 		g.model.Metadata.Source, g.model.Metadata.Timestamp.Format("2006-01-02 15:04:05"))
 	fmt.Fprintln(w, "  labelloc=t;")
 	fmt.Fprintln(w, "  fontsize=14;")
 	fmt.Fprintln(w, "")
 
-	// Create zones as clusters
-	g.generateZoneClusters(w)
-
-	// Generate network segments within zones
-	g.generateNetworkSegments(w)
-
-	// Generate security policy flows
-	g.generateSecurityPolicyFlows(w)
-
-	// Add legend
-	g.generateFirewallLegend(w)
+	// Generate firewall-centric topology
+	g.generateFirewallCentricTopology(w)
 
 	fmt.Fprintln(w, "}")
 	return nil
@@ -315,6 +308,190 @@ func (g *FirewallDiagramGenerator) generateIEC62443Legend(w *bufio.Writer) {
 	fmt.Fprintln(w, "    ent_zone [label=\"Enterprise Zone\\n(Level 3-5)\", fillcolor=\"#e1bee7\", style=\"filled,rounded\", shape=\"box\"];")
 	fmt.Fprintln(w, "    remote_zone [label=\"Remote Access Zone\\n(VPN/Remote)\", fillcolor=\"#b3e5fc\", style=\"filled,rounded\", shape=\"box\"];")
 	fmt.Fprintln(w, "  }")
+}
+
+// generateFirewallCentricTopology creates a traditional network diagram with firewall at center
+func (g *FirewallDiagramGenerator) generateFirewallCentricTopology(w *bufio.Writer) {
+	// Create the central firewall node
+	fmt.Fprintln(w, "  // Central Firewall")
+	fmt.Fprintln(w, "  firewall [")
+	fmt.Fprintln(w, "    label=\"🔥 Firewall\\n(OPNsense)\\n\\nInterfaces:\";")
+	fmt.Fprintln(w, "    shape=box;")
+	fmt.Fprintln(w, "    style=\"filled,rounded\";")
+	fmt.Fprintln(w, "    fillcolor=\"#e3f2fd\";")
+	fmt.Fprintln(w, "    color=\"#1976d2\";")
+	fmt.Fprintln(w, "    penwidth=3;")
+	fmt.Fprintln(w, "    fontsize=12;")
+	fmt.Fprintln(w, "    fontname=\"Arial Bold\";")
+	fmt.Fprintln(w, "  ];")
+	fmt.Fprintln(w, "")
+
+	// Create network nodes for each interface/network
+	fmt.Fprintln(w, "  // Network Segments")
+	for _, network := range g.model.Networks {
+		g.generateNetworkNode(w, network)
+	}
+	fmt.Fprintln(w, "")
+
+	// Connect firewall to networks
+	fmt.Fprintln(w, "  // Firewall to Network Connections")
+	for _, network := range g.model.Networks {
+		g.generateFirewallToNetworkConnection(w, network)
+	}
+	fmt.Fprintln(w, "")
+
+	// Add rule annotations
+	fmt.Fprintln(w, "  // Security Rules (as edge labels)")
+	g.generateRuleAnnotations(w)
+}
+
+// generateNetworkNode creates a node for a network segment
+func (g *FirewallDiagramGenerator) generateNetworkNode(w *bufio.Writer, network *interfaces.NetworkSegment) {
+	nodeID := fmt.Sprintf("net_%s", network.ID)
+
+	// Build the network label with all relevant information
+	label := fmt.Sprintf("%s", network.ID)
+	if network.CIDR != "" {
+		label += fmt.Sprintf("\\n%s", network.CIDR)
+	}
+	if network.Name != "" {
+		label += fmt.Sprintf("\\n(%s)", network.Name)
+	}
+
+	// Add zone information
+	label += fmt.Sprintf("\\n\\nZone: %s", network.Zone)
+	label += fmt.Sprintf("\\nRisk: %s", network.Risk)
+
+	// Add interface information if available
+	if network.Purpose != "" {
+		label += fmt.Sprintf("\\nType: %s", network.Purpose)
+	}
+
+	// Choose colors based on zone
+	fillColor := g.getZoneColor(network.Zone)
+	borderColor := g.getZoneBorderColor(network.Zone)
+
+	fmt.Fprintf(w, "  %s [\n", nodeID)
+	fmt.Fprintf(w, "    label=\"%s\";\n", label)
+	fmt.Fprintln(w, "    shape=box;")
+	fmt.Fprintln(w, "    style=\"filled,rounded\";")
+	fmt.Fprintf(w, "    fillcolor=\"%s\";\n", fillColor)
+	fmt.Fprintf(w, "    color=\"%s\";\n", borderColor)
+	fmt.Fprintln(w, "    penwidth=2;")
+	fmt.Fprintln(w, "    fontsize=10;")
+	fmt.Fprintln(w, "  ];")
+}
+
+// generateFirewallToNetworkConnection creates connection from firewall to network
+func (g *FirewallDiagramGenerator) generateFirewallToNetworkConnection(w *bufio.Writer, network *interfaces.NetworkSegment) {
+	nodeID := fmt.Sprintf("net_%s", network.ID)
+
+	// Create interface label
+	interfaceLabel := network.ID
+	if network.CIDR != "" {
+		interfaceLabel += fmt.Sprintf("\\n%s", network.CIDR)
+	}
+
+	fmt.Fprintf(w, "  firewall -> %s [\n", nodeID)
+	fmt.Fprintf(w, "    label=\"%s\";\n", interfaceLabel)
+	fmt.Fprintln(w, "    fontsize=9;")
+	fmt.Fprintln(w, "    color=\"#666666\";")
+	fmt.Fprintln(w, "    penwidth=2;")
+	fmt.Fprintln(w, "  ];")
+}
+
+// generateRuleAnnotations adds security rule information as annotations
+func (g *FirewallDiagramGenerator) generateRuleAnnotations(w *bufio.Writer) {
+	if len(g.model.Policies) == 0 {
+		return
+	}
+
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "  // Security Rules Summary")
+	fmt.Fprintln(w, "  rules_summary [")
+	fmt.Fprintln(w, "    label=\"🔒 Security Rules Summary\\n\\n")
+
+	// Show first few important rules
+	ruleCount := 0
+	for _, policy := range g.model.Policies {
+		if ruleCount >= 5 { // Limit to 5 rules for readability
+			break
+		}
+
+		action := "ALLOW"
+		if policy.Action == "DENY" || policy.Action == "DROP" || policy.Action == "REJECT" {
+			action = "DENY"
+		}
+
+		// Handle NetworkRange source
+		source := "any"
+		if policy.Source.CIDR != "" {
+			source = policy.Source.CIDR
+		} else if len(policy.Source.IPs) > 0 {
+			source = policy.Source.IPs[0] // Show first IP
+			if len(policy.Source.IPs) > 1 {
+				source += ",..."
+			}
+		}
+
+		// Handle NetworkRange destination
+		destination := "any"
+		if policy.Destination.CIDR != "" {
+			destination = policy.Destination.CIDR
+		} else if len(policy.Destination.IPs) > 0 {
+			destination = policy.Destination.IPs[0] // Show first IP
+			if len(policy.Destination.IPs) > 1 {
+				destination += ",..."
+			}
+		}
+
+		fmt.Fprintf(w, "    %s: %s → %s\\n", action, source, destination)
+		ruleCount++
+	}
+
+	if len(g.model.Policies) > 5 {
+		fmt.Fprintf(w, "    ... and %d more rules", len(g.model.Policies)-5)
+	}
+
+	fmt.Fprintln(w, "\";")
+	fmt.Fprintln(w, "    shape=note;")
+	fmt.Fprintln(w, "    style=\"filled,rounded\";")
+	fmt.Fprintln(w, "    fillcolor=\"#fff9c4\";")
+	fmt.Fprintln(w, "    color=\"#f57f17\";")
+	fmt.Fprintln(w, "    fontsize=9;")
+	fmt.Fprintln(w, "  ];")
+}
+
+// getZoneColor returns the fill color for a zone
+func (g *FirewallDiagramGenerator) getZoneColor(zone interfaces.IEC62443Zone) string {
+	switch zone {
+	case interfaces.ManufacturingZone:
+		return "#c8e6c9" // Light green
+	case interfaces.DMZZone:
+		return "#ffe0b2" // Light orange
+	case interfaces.EnterpriseZone:
+		return "#e1bee7" // Light purple
+	case interfaces.RemoteAccessZone:
+		return "#b3e5fc" // Light blue
+	default:
+		return "#f5f5f5" // Light gray
+	}
+}
+
+// getZoneBorderColor returns the border color for a zone
+func (g *FirewallDiagramGenerator) getZoneBorderColor(zone interfaces.IEC62443Zone) string {
+	switch zone {
+	case interfaces.ManufacturingZone:
+		return "#2e7d32" // Dark green
+	case interfaces.DMZZone:
+		return "#f57c00" // Dark orange
+	case interfaces.EnterpriseZone:
+		return "#7b1fa2" // Dark purple
+	case interfaces.RemoteAccessZone:
+		return "#0277bd" // Dark blue
+	default:
+		return "#666666" // Dark gray
+	}
 }
 
 // Helper functions

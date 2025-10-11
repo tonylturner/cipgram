@@ -9,8 +9,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"cipgram/internal/output"
+	"cipgram/internal/parsers/opnsense"
+	"cipgram/internal/writers"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -62,8 +65,86 @@ func generateImage(dotPath string) error {
 	return nil
 }
 
+// processFirewallConfig analyzes firewall configuration and generates diagrams
+func processFirewallConfig(configPath string, paths *output.OutputPaths, projectName string) error {
+	// Check if config file exists
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return fmt.Errorf("config file not found: %s", configPath)
+	}
+
+	log.Printf("🔧 Parsing OPNsense configuration...")
+
+	// Parse OPNsense configuration
+	parser := opnsense.NewOPNsenseParser(configPath)
+	model, err := parser.Parse()
+	if err != nil {
+		return fmt.Errorf("failed to parse OPNsense config: %v", err)
+	}
+
+	log.Printf("✅ Parsed configuration: %d networks, %d policies", len(model.Networks), len(model.Policies))
+
+	// Create firewall diagram generator
+	generator := writers.NewFirewallDiagramGenerator(model)
+
+	// Generate network topology diagram
+	topologyPath := filepath.Join(paths.FirewallAnalysis, "network_topology.dot")
+	log.Printf("🌐 Generating network topology diagram...")
+	if err := generator.GenerateNetworkTopologyDiagram(topologyPath); err != nil {
+		log.Printf("Warning: Failed to generate topology diagram: %v", err)
+	} else {
+		log.Printf("✅ Network topology: %s", topologyPath)
+
+		// Generate image if requested
+		if err := generateImageEmbedded(topologyPath); err != nil {
+			log.Printf("Image generation warning: %v", err)
+		}
+	}
+
+	// Generate IEC 62443 zone diagram
+	zonePath := filepath.Join(paths.IEC62443Diagrams, "iec62443_zones.dot")
+	log.Printf("🏭 Generating IEC 62443 zone diagram...")
+	if err := generator.GenerateIEC62443ZoneDiagram(zonePath); err != nil {
+		log.Printf("Warning: Failed to generate zone diagram: %v", err)
+	} else {
+		log.Printf("✅ IEC 62443 zones: %s", zonePath)
+
+		// Generate image if requested
+		if err := generateImageEmbedded(zonePath); err != nil {
+			log.Printf("Image generation warning: %v", err)
+		}
+	}
+
+	// Display analysis summary
+	log.Printf("\n🎓 Firewall Analysis Summary:")
+	log.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+	if len(model.Networks) > 0 {
+		log.Printf("📊 Network Segments:")
+		for _, network := range model.Networks {
+			log.Printf("  • %s (%s) → %s zone, %s risk",
+				network.ID, network.CIDR, network.Zone, network.Risk)
+		}
+	}
+
+	if len(model.Policies) > 0 {
+		log.Printf("🔒 Security Policies:")
+		for i, policy := range model.Policies {
+			if i < 5 { // Show first 5 policies
+				log.Printf("  • %s → %s (%s)",
+					policy.Source, policy.Destination, policy.Action)
+			}
+		}
+		if len(model.Policies) > 5 {
+			log.Printf("  ... and %d more policies", len(model.Policies)-5)
+		}
+	}
+
+	return nil
+}
+
 func main() {
 	pcapPath := flag.String("pcap", "", "Path to pcap/pcapng file")
+	firewallConfig := flag.String("firewall-config", "", "Path to firewall configuration file (OPNsense XML)")
 	outDOT := flag.String("out", "", "Output Graphviz DOT path (default: output/PROJECT/network_diagrams/diagram.dot)")
 	outJSON := flag.String("json", "", "Output JSON path (default: output/PROJECT/data/diagram.json)")
 	cfgPath := flag.String("config", "", "Optional YAML with subnet→Purdue mappings")
@@ -81,15 +162,28 @@ func main() {
 
 	flag.Parse()
 
-	if *pcapPath == "" {
-		log.Fatal("provide -pcap path to analyze")
+	// Validate input arguments
+	if *pcapPath == "" && *firewallConfig == "" {
+		log.Printf("❌ Error: Must provide either -pcap or -firewall-config")
+		log.Printf("💡 Examples:")
+		log.Printf("   PCAP analysis:     ./cipgram -pcap traffic.pcap -project 'demo'")
+		log.Printf("   Firewall analysis: ./cipgram -firewall-config config.xml -project 'firewall_audit'")
+		log.Printf("   Combined analysis: ./cipgram -pcap traffic.pcap -firewall-config config.xml -project 'full_analysis'")
+		return
 	}
 
 	// Create output manager with project name
 	if *projectName == "" {
-		// Auto-generate project name from pcap file
-		base := filepath.Base(*pcapPath)
-		*projectName = strings.TrimSuffix(base, filepath.Ext(base))
+		// Auto-generate project name from input file
+		if *pcapPath != "" {
+			base := filepath.Base(*pcapPath)
+			*projectName = strings.TrimSuffix(base, filepath.Ext(base))
+		} else if *firewallConfig != "" {
+			base := filepath.Base(*firewallConfig)
+			*projectName = strings.TrimSuffix(base, filepath.Ext(base)) + "_firewall"
+		} else {
+			*projectName = "analysis_" + fmt.Sprintf("%d", time.Now().Unix())
+		}
 	}
 
 	outputMgr := output.NewOutputManager(*projectName)
@@ -113,8 +207,35 @@ func main() {
 
 	log.Printf("🎯 CIPgram Analysis - Project: %s", *projectName)
 	log.Printf("📁 Output directory: %s", paths.ProjectRoot)
-	log.Printf("📊 DOT file: %s", *outDOT)
-	log.Printf("💾 JSON file: %s", *outJSON)
+
+	// Determine analysis type and process accordingly
+	if *pcapPath != "" && *firewallConfig != "" {
+		log.Printf("🚀 Combined Analysis: PCAP + Firewall Config")
+		log.Printf("📊 PCAP file: %s", *pcapPath)
+		log.Printf("🔧 Firewall config: %s", *firewallConfig)
+		// TODO: Implement combined analysis
+		log.Printf("❌ Combined analysis not yet implemented - use separate analyses for now")
+		return
+	} else if *firewallConfig != "" {
+		log.Printf("🔧 Firewall Configuration Analysis")
+		log.Printf("📊 Config file: %s", *firewallConfig)
+
+		// Process firewall configuration
+		err := processFirewallConfig(*firewallConfig, paths, *projectName)
+		if err != nil {
+			log.Printf("❌ Error analyzing firewall config: %v", err)
+			return
+		}
+
+		log.Printf("\n🎯 Firewall analysis complete! Check the %s directory for results.", paths.ProjectRoot)
+		return
+	} else if *pcapPath != "" {
+		log.Printf("📊 PCAP Traffic Analysis")
+		log.Printf("📊 PCAP file: %s", *pcapPath)
+		log.Printf("💾 JSON file: %s", *outJSON)
+
+		// Continue with existing PCAP processing...
+	}
 
 	mapping, err := loadMapping(*cfgPath)
 	if err != nil {
@@ -130,7 +251,10 @@ func main() {
 	// Open PCAP file for analysis
 	handle, err := pcap.OpenOffline(*pcapPath)
 	if err != nil {
-		log.Fatalf("pcap open error: %v", err)
+		log.Printf("❌ Error opening PCAP file: %v", err)
+		log.Printf("💡 Tip: Check file path and format (should be .pcap or .pcapng)")
+		log.Printf("📁 Attempted path: %s", *pcapPath)
+		return
 	}
 	defer handle.Close()
 
@@ -138,10 +262,13 @@ func main() {
 
 	src := gopacket.NewPacketSource(handle, handle.LinkType())
 	packetCount := 0
+	startTime := time.Now()
 	for pkt := range src.Packets() {
 		packetCount++
 		if packetCount%1000 == 0 {
-			log.Printf("Processed %d packets...", packetCount)
+			elapsed := time.Since(startTime)
+			rate := float64(packetCount) / elapsed.Seconds()
+			log.Printf("📊 Processed %d packets (%.0f pkt/sec)", packetCount, rate)
 		}
 
 		ethLayer := pkt.Layer(layers.LayerTypeEthernet)
@@ -355,6 +482,60 @@ func main() {
 	log.Printf("Final diagram has %d hosts and %d communication flows",
 		len(finalGraph.Hosts), len(finalGraph.Edges))
 
+	// Training workshop feedback - show FINAL classification results
+	log.Printf("")
+	log.Printf("🎓 Training Analysis Summary:")
+	log.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+	l1Count := 0
+	l2Count := 0
+	l3Count := 0
+	unknownCount := 0
+
+	// Count devices AFTER classification (use final results)
+	for _, host := range finalGraph.Hosts {
+		switch host.InferredLevel {
+		case L1:
+			l1Count++
+		case L2:
+			l2Count++
+		case L3:
+			l3Count++
+		default:
+			unknownCount++
+		}
+	}
+
+	log.Printf("📊 Purdue Model Classification:")
+	log.Printf("   Level 1 (Field Devices): %d", l1Count)
+	log.Printf("   Level 2 (Control Systems): %d", l2Count)
+	log.Printf("   Level 3 (Operations): %d", l3Count)
+	if unknownCount > 0 {
+		log.Printf("   Unknown Classification: %d", unknownCount)
+	}
+
+	// Show detected protocols for training
+	protocols := make(map[string]int)
+	for _, edge := range finalGraph.Edges {
+		protoStr := string(edge.Protocol)
+		if strings.Contains(protoStr, "ENIP") {
+			protocols["EtherNet/IP"]++
+		} else if strings.Contains(protoStr, "Modbus") {
+			protocols["Modbus TCP"]++
+		} else if strings.Contains(protoStr, "S7") {
+			protocols["S7Comm"]++
+		} else if strings.Contains(protoStr, "OPC") {
+			protocols["OPC-UA"]++
+		}
+	}
+
+	if len(protocols) > 0 {
+		log.Printf("🔌 Industrial Protocols Detected:")
+		for proto, count := range protocols {
+			log.Printf("   %s: %d connections", proto, count)
+		}
+	}
+
 	// Generate diagrams based on type
 	switch *diagramType {
 	case "both":
@@ -364,35 +545,46 @@ func main() {
 		// Purdue diagram using gg (Go Graphics)
 		purduePngPath, err := generatePurdueWithGG(finalGraph, paths.NetworkDiagrams)
 		if err != nil {
-			log.Fatalf("Purdue PNG generation error: %v", err)
+			log.Printf("❌ Error generating Purdue diagram: %v", err)
+			log.Printf("💡 Tip: This might be due to missing graphics libraries or insufficient data")
+			log.Printf("🔄 Continuing with other outputs...")
+		} else {
+			log.Printf("• Purdue PNG: %s", purduePngPath)
 		}
-		log.Printf("• Purdue PNG: %s", purduePngPath)
 
 		// Network diagram using DOT
 		networkDotPath := filepath.Join(paths.NetworkDiagrams, "network_diagram.dot")
 		if err := writeDOT(finalGraph, networkDotPath, NetworkDiagram); err != nil {
-			log.Fatalf("Network DOT write error: %v", err)
-		}
-		log.Printf("• Network DOT: %s", networkDotPath)
+			log.Printf("❌ Error generating network DOT file: %v", err)
+			log.Printf("💡 Tip: Check disk space and write permissions")
+			log.Printf("🔄 Continuing with other outputs...")
+		} else {
+			log.Printf("• Network DOT: %s", networkDotPath)
 
-		// Generate network diagram images
-		if *generateImages {
-			if err := generateImage(networkDotPath); err != nil {
-				log.Printf("Network image generation warning: %v", err)
+			// Generate network diagram images
+			if *generateImages {
+				if err := generateImageEmbedded(networkDotPath); err != nil {
+					log.Printf("Network image generation warning: %v", err)
+					log.Printf("💡 Tip: The DOT file is still available for manual processing")
+				}
 			}
 		}
 
 	case "network":
 		log.Printf("Generating network segmentation diagram...")
 		if err := writeDOT(finalGraph, *outDOT, NetworkDiagram); err != nil {
-			log.Fatalf("DOT write error: %v", err)
-		}
-		log.Printf("• DOT file: %s", *outDOT)
+			log.Printf("❌ Error generating network diagram: %v", err)
+			log.Printf("💡 Tip: Check output directory permissions and disk space")
+			log.Printf("📁 Attempted path: %s", *outDOT)
+		} else {
+			log.Printf("• DOT file: %s", *outDOT)
 
-		// Generate images if requested
-		if *generateImages {
-			if err := generateImage(*outDOT); err != nil {
-				log.Printf("Image generation warning: %v", err)
+			// Generate images if requested
+			if *generateImages {
+				if err := generateImageEmbedded(*outDOT); err != nil {
+					log.Printf("Image generation warning: %v", err)
+					log.Printf("💡 Tip: The DOT file is still available for manual processing")
+				}
 			}
 		}
 
@@ -402,16 +594,21 @@ func main() {
 		// Use gg-based generation for Purdue diagrams
 		purduePngPath, err := generatePurdueWithGG(finalGraph, paths.NetworkDiagrams)
 		if err != nil {
-			log.Fatalf("Purdue PNG generation error: %v", err)
+			log.Printf("❌ Error generating Purdue diagram: %v", err)
+			log.Printf("💡 Tip: This might be due to missing graphics libraries or insufficient data")
+		} else {
+			log.Printf("• Purdue PNG: %s", purduePngPath)
 		}
-		log.Printf("• Purdue PNG: %s", purduePngPath)
 	}
 
 	// Write JSON output (always generated)
 	if err := writeJSON(finalGraph, *outJSON); err != nil {
-		log.Fatalf("JSON write error: %v", err)
+		log.Printf("❌ Error writing JSON output: %v", err)
+		log.Printf("💡 Tip: Check output directory permissions and disk space")
+		log.Printf("📁 Attempted path: %s", *outJSON)
+	} else {
+		log.Printf("• JSON file: %s", *outJSON)
 	}
-	log.Printf("• JSON file: %s", *outJSON)
 
 	// Save OUI cache for future runs
 	SaveOUICache()
