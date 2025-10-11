@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -25,15 +27,19 @@ func loadMapping(path string) (*MappingTable, error) {
 	return &m, nil
 }
 
-// apply applies subnet mapping overrides to a host
+// apply applies subnet mapping overrides to a host using proper CIDR matching
 func (m *MappingTable) apply(h *Host) {
-	if m == nil || m.Subnets == nil {
+	if m == nil || m.Mappings == nil {
 		return
 	}
-	
-	for subnet, mapping := range m.Subnets {
-		// Simple subnet matching (could be enhanced)
-		if matchesSubnet(h.IP, subnet) {
+
+	hostIP := net.ParseIP(h.IP)
+	if hostIP == nil {
+		return // Invalid IP address
+	}
+
+	for _, mapping := range m.Mappings {
+		if matchesCIDR(hostIP, mapping.CIDR) {
 			h.OverrideLevel = &mapping.Level
 			if mapping.Role != "" {
 				h.OverrideRole = mapping.Role
@@ -43,9 +49,11 @@ func (m *MappingTable) apply(h *Host) {
 	}
 }
 
-// matchesSubnet performs basic subnet matching
-func matchesSubnet(ip, subnet string) bool {
-	// Simple prefix matching for now
-	// Could be enhanced with proper CIDR parsing
-	return len(ip) >= len(subnet) && ip[:len(subnet)] == subnet
+// matchesCIDR performs proper CIDR subnet matching
+func matchesCIDR(ip net.IP, cidr string) bool {
+	_, subnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return false // Invalid CIDR
+	}
+	return subnet.Contains(ip)
 }

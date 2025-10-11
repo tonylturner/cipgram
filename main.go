@@ -9,28 +9,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
+
+	"cipgram/internal/output"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
-
-// Utility functions
-func createOutputDir(pcapPath string) (string, error) {
-	if pcapPath == "" {
-		// Live capture - use timestamp
-		timestamp := time.Now().Format("20060102_150405")
-		return filepath.Join("diagrams", "live_capture_"+timestamp), os.MkdirAll(filepath.Join("diagrams", "live_capture_"+timestamp), 0755)
-	}
-
-	// Extract pcap name without extension
-	base := filepath.Base(pcapPath)
-	name := strings.TrimSuffix(base, filepath.Ext(base))
-	outputDir := filepath.Join("diagrams", name)
-
-	return outputDir, os.MkdirAll(outputDir, 0755)
-}
 
 func generateImage(dotPath string) error {
 	if dotPath == "" {
@@ -79,12 +64,11 @@ func generateImage(dotPath string) error {
 
 func main() {
 	pcapPath := flag.String("pcap", "", "Path to pcap/pcapng file")
-	outDOT := flag.String("out", "", "Output Graphviz DOT path (default: diagrams/$pcapname/diagram.dot)")
-	outJSON := flag.String("json", "", "Output JSON path (default: diagrams/$pcapname/diagram.json)")
-	iface := flag.String("iface", "", "Optional live capture interface (alternative to -pcap)")
-	snaplen := flag.Int("snaplen", 262144, "Snaplen for live capture")
+	outDOT := flag.String("out", "", "Output Graphviz DOT path (default: output/PROJECT/network_diagrams/diagram.dot)")
+	outJSON := flag.String("json", "", "Output JSON path (default: output/PROJECT/data/diagram.json)")
 	cfgPath := flag.String("config", "", "Optional YAML with subnet→Purdue mappings")
 	generateImages := flag.Bool("images", true, "Generate PNG/SVG images from DOT file (requires Graphviz)")
+	projectName := flag.String("project", "", "Project name for organized output (default: auto-generated from input)")
 
 	// Diagram options
 	summaryMode := flag.Bool("summary", false, "Generate simplified summary diagram (groups similar connections)")
@@ -97,22 +81,29 @@ func main() {
 
 	flag.Parse()
 
-	if *pcapPath == "" && *iface == "" {
-		log.Fatal("provide -pcap path or -iface for live capture")
+	if *pcapPath == "" {
+		log.Fatal("provide -pcap path to analyze")
 	}
 
-	// Create output directory structure
-	outputDir, err := createOutputDir(*pcapPath)
+	// Create output manager with project name
+	if *projectName == "" {
+		// Auto-generate project name from pcap file
+		base := filepath.Base(*pcapPath)
+		*projectName = strings.TrimSuffix(base, filepath.Ext(base))
+	}
+
+	outputMgr := output.NewOutputManager(*projectName)
+	paths, err := outputMgr.CreateProjectStructure()
 	if err != nil {
 		log.Fatalf("output directory creation error: %v", err)
 	}
 
 	// Set default output paths if not specified
 	if *outDOT == "" {
-		*outDOT = filepath.Join(outputDir, "diagram.dot")
+		*outDOT = filepath.Join(paths.NetworkDiagrams, "diagram.dot")
 	}
 	if *outJSON == "" {
-		*outJSON = filepath.Join(outputDir, "diagram.json")
+		*outJSON = filepath.Join(paths.DataOutput, "diagram.json")
 	}
 
 	// Handle both diagrams option (now default)
@@ -120,9 +111,10 @@ func main() {
 		*diagramType = "both"
 	}
 
-	log.Printf("Output directory: %s", outputDir)
-	log.Printf("DOT file: %s", *outDOT)
-	log.Printf("JSON file: %s", *outJSON)
+	log.Printf("🎯 CIPgram Analysis - Project: %s", *projectName)
+	log.Printf("📁 Output directory: %s", paths.ProjectRoot)
+	log.Printf("📊 DOT file: %s", *outDOT)
+	log.Printf("💾 JSON file: %s", *outJSON)
 
 	mapping, err := loadMapping(*cfgPath)
 	if err != nil {
@@ -134,22 +126,15 @@ func main() {
 	}
 
 	g := newGraph()
-	var handle *pcap.Handle
 
-	if *pcapPath != "" {
-		handle, err = pcap.OpenOffline(*pcapPath)
-		if err != nil {
-			log.Fatalf("pcap open error: %v", err)
-		}
-		log.Printf("Analyzing pcap file: %s", *pcapPath)
-	} else {
-		handle, err = pcap.OpenLive(*iface, int32(*snaplen), true, pcap.BlockForever)
-		if err != nil {
-			log.Fatalf("live capture error: %v", err)
-		}
-		log.Printf("Starting live capture on interface: %s", *iface)
+	// Open PCAP file for analysis
+	handle, err := pcap.OpenOffline(*pcapPath)
+	if err != nil {
+		log.Fatalf("pcap open error: %v", err)
 	}
 	defer handle.Close()
+
+	log.Printf("Analyzing pcap file: %s", *pcapPath)
 
 	src := gopacket.NewPacketSource(handle, handle.LinkType())
 	packetCount := 0
@@ -376,25 +361,22 @@ func main() {
 		// Generate both Purdue and Network diagrams
 		log.Printf("Generating both Purdue and Network diagrams...")
 
-		// Purdue diagram
-		purdueDotPath := filepath.Join(outputDir, "purdue_diagram.dot")
-		if err := writeDOT(finalGraph, purdueDotPath, PurdueDiagram); err != nil {
-			log.Fatalf("Purdue DOT write error: %v", err)
+		// Purdue diagram using gg (Go Graphics)
+		purduePngPath, err := generatePurdueWithGG(finalGraph, paths.NetworkDiagrams)
+		if err != nil {
+			log.Fatalf("Purdue PNG generation error: %v", err)
 		}
-		log.Printf("• Purdue DOT: %s", purdueDotPath)
+		log.Printf("• Purdue PNG: %s", purduePngPath)
 
-		// Network diagram
-		networkDotPath := filepath.Join(outputDir, "network_diagram.dot")
+		// Network diagram using DOT
+		networkDotPath := filepath.Join(paths.NetworkDiagrams, "network_diagram.dot")
 		if err := writeDOT(finalGraph, networkDotPath, NetworkDiagram); err != nil {
 			log.Fatalf("Network DOT write error: %v", err)
 		}
 		log.Printf("• Network DOT: %s", networkDotPath)
 
-		// Generate images for both
+		// Generate network diagram images
 		if *generateImages {
-			if err := generateImage(purdueDotPath); err != nil {
-				log.Printf("Purdue image generation warning: %v", err)
-			}
 			if err := generateImage(networkDotPath); err != nil {
 				log.Printf("Network image generation warning: %v", err)
 			}
@@ -416,17 +398,13 @@ func main() {
 
 	default: // "purdue"
 		log.Printf("Generating Purdue functional model diagram...")
-		if err := writeDOT(finalGraph, *outDOT, PurdueDiagram); err != nil {
-			log.Fatalf("DOT write error: %v", err)
-		}
-		log.Printf("• DOT file: %s", *outDOT)
 
-		// Generate images if requested
-		if *generateImages {
-			if err := generateImage(*outDOT); err != nil {
-				log.Printf("Image generation warning: %v", err)
-			}
+		// Use gg-based generation for Purdue diagrams
+		purduePngPath, err := generatePurdueWithGG(finalGraph, paths.NetworkDiagrams)
+		if err != nil {
+			log.Fatalf("Purdue PNG generation error: %v", err)
 		}
+		log.Printf("• Purdue PNG: %s", purduePngPath)
 	}
 
 	// Write JSON output (always generated)
@@ -438,5 +416,77 @@ func main() {
 	// Save OUI cache for future runs
 	SaveOUICache()
 
-	fmt.Printf("\n🎯 Analysis complete! Check the %s directory for results.\n", outputDir)
+	// Generate project summary
+	metadata := output.ProjectMetadata{
+		AnalysisType: "PCAP Traffic Analysis",
+		InputSources: []output.InputSourceInfo{
+			{
+				Type:        "PCAP File",
+				Path:        *pcapPath,
+				Size:        getFileSize(*pcapPath),
+				Description: "Network traffic capture for industrial protocol analysis",
+			},
+		},
+		Summary: output.AnalysisSummary{
+			AssetsFound:     len(finalGraph.Hosts),
+			NetworksFound:   countInferredNetworks(finalGraph),
+			PoliciesFound:   0, // N/A for PCAP-only analysis
+			ViolationsFound: 0, // N/A for PCAP-only analysis
+			RiskLevel:       inferOverallRisk(finalGraph),
+		},
+	}
+
+	if err := outputMgr.GenerateProjectSummary(paths, metadata); err != nil {
+		log.Printf("Warning: Failed to generate project summary: %v", err)
+	} else {
+		log.Printf("📋 Project summary: %s/project_summary.md", paths.ProjectRoot)
+	}
+
+	fmt.Printf("\n🎯 Analysis complete! Check the %s directory for results.\n", paths.ProjectRoot)
+}
+
+// Helper functions for project summary
+func getFileSize(path string) int64 {
+	if info, err := os.Stat(path); err == nil {
+		return info.Size()
+	}
+	return 0
+}
+
+func countInferredNetworks(g *Graph) int {
+	networks := make(map[string]bool)
+	for _, host := range g.Hosts {
+		if host.IP != "" {
+			// Simple network inference based on /24 networks
+			ip := strings.Split(host.IP, ".")
+			if len(ip) >= 3 {
+				network := fmt.Sprintf("%s.%s.%s.0/24", ip[0], ip[1], ip[2])
+				networks[network] = true
+			}
+		}
+	}
+	return len(networks)
+}
+
+func inferOverallRisk(g *Graph) string {
+	highRiskCount := 0
+	totalHosts := len(g.Hosts)
+
+	for _, host := range g.Hosts {
+		if host.ICSScore > host.ITScore && host.ICSScore > 0 {
+			highRiskCount++
+		}
+	}
+
+	if totalHosts == 0 {
+		return "Unknown"
+	}
+
+	riskRatio := float64(highRiskCount) / float64(totalHosts)
+	if riskRatio > 0.7 {
+		return "High"
+	} else if riskRatio > 0.3 {
+		return "Medium"
+	}
+	return "Low"
 }

@@ -35,7 +35,7 @@ type PurdueLevel string
 
 const (
 	L1      PurdueLevel = "Level 1"
-	L2      PurdueLevel = "Level 2" 
+	L2      PurdueLevel = "Level 2"
 	L3      PurdueLevel = "Level 3"
 	Unknown PurdueLevel = "Unknown"
 )
@@ -90,10 +90,11 @@ type Graph struct {
 }
 
 type MappingTable struct {
-	Subnets map[string]SubnetMapping `yaml:"subnets"`
+	Mappings []SubnetMapping `yaml:"mappings"`
 }
 
 type SubnetMapping struct {
+	CIDR  string      `yaml:"cidr"`
 	Level PurdueLevel `yaml:"level"`
 	Role  string      `yaml:"role,omitempty"`
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,18 @@ import (
 	"sync"
 	"time"
 )
+
+// createSecureHTTPClient creates an HTTP client with proper TLS verification
+func createSecureHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			},
+		},
+	}
+}
 
 // Online OUI lookup services
 type OUILookupService struct {
@@ -29,7 +42,7 @@ var ouiOnce sync.Once
 func getOUIService() *OUILookupService {
 	ouiOnce.Do(func() {
 		cacheDir := filepath.Join(".", ".oui_cache")
-		os.MkdirAll(cacheDir, 0755)
+		os.MkdirAll(cacheDir, 0644)
 
 		ouiService = &OUILookupService{
 			cache:    make(map[string]string),
@@ -102,9 +115,9 @@ func (s *OUILookupService) lookupOnline(oui string) string {
 	return ""
 }
 
-// lookupMacVendors uses macvendors.com API (with rate limiting)
+// lookupMacVendors uses macvendors.com API (with rate limiting and secure TLS)
 func (s *OUILookupService) lookupMacVendors(oui string) string {
-	client := &http.Client{Timeout: 3 * time.Second} // Reduced timeout
+	client := createSecureHTTPClient(3 * time.Second) // Secure client with reduced timeout
 
 	// Format MAC for API (need full MAC, use zeros for last 3 bytes)
 	macForAPI := fmt.Sprintf("%s:%s:%s:00:00:00", oui[:2], oui[2:4], oui[4:6])
@@ -162,9 +175,9 @@ func (s *OUILookupService) lookupWireshark(oui string) string {
 	return s.searchWiresharkDatabase(wiresharkFile, oui)
 }
 
-// downloadIEEEDatabase downloads the official IEEE OUI registry
+// downloadIEEEDatabase downloads the official IEEE OUI registry with secure client
 func (s *OUILookupService) downloadIEEEDatabase(filename string) {
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := createSecureHTTPClient(30 * time.Second)
 
 	url := "http://standards-oui.ieee.org/oui/oui.txt"
 	resp, err := client.Get(url)
@@ -225,9 +238,9 @@ func (s *OUILookupService) shouldUpdateIEEEDatabase(filename string) bool {
 	return s.shouldUpdateDatabase(filename, 7*24*time.Hour)
 }
 
-// downloadWiresharkDatabase downloads Wireshark's manuf database
+// downloadWiresharkDatabase downloads Wireshark's manuf database with secure client
 func (s *OUILookupService) downloadWiresharkDatabase(filename string) {
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := createSecureHTTPClient(15 * time.Second)
 
 	url := "https://gitlab.com/wireshark/wireshark/-/raw/master/manuf"
 	resp, err := client.Get(url)

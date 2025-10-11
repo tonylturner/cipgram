@@ -28,94 +28,59 @@ func writeDOT(g *Graph, path string, diagramType DiagramType) error {
 	}
 }
 
-// writePurdueDOT creates a proper vertical Purdue model diagram for functional modeling
+// writePurdueDOT creates a professional system-level Purdue model diagram for functional modeling
 func writePurdueDOT(g *Graph, path string) error {
-	levels := map[PurdueLevel][]string{}
-	for ip, h := range g.Hosts {
-		levels[h.InferredLevel] = append(levels[h.InferredLevel], ip)
-	}
-	for k := range levels {
-		sort.Strings(levels[k])
-	}
+	// Group devices into functional systems instead of individual nodes
+	systems := groupDevicesIntoSystems(g)
 
 	var b strings.Builder
 	w := bufio.NewWriter(&b)
 
-	// Traditional vertical Purdue model
+	// Professional Purdue model with system-level view
 	fmt.Fprintln(w, "digraph PurdueModel {")
-	fmt.Fprintln(w, `  graph [rankdir=TB, splines=ortho, ranksep=2.5, nodesep=1.2, bgcolor=white, concentrate=true];`)
-	fmt.Fprintln(w, `  node [shape=box, style="rounded,filled", fontname="Arial", fontsize=10];`)
-	fmt.Fprintln(w, `  edge [fontname="Arial", fontsize=9, penwidth=2];`)
+	fmt.Fprintln(w, `  graph [rankdir=TB, splines=ortho, ranksep=3.0, nodesep=2.0, bgcolor=white, pad=0.5];`)
+	fmt.Fprintln(w, `  node [shape=record, style="rounded,filled", fontname="Arial", fontsize=11];`)
+	fmt.Fprintln(w, `  edge [fontname="Arial", fontsize=10, penwidth=2];`)
 	fmt.Fprintln(w, "")
 
-	// Proper Purdue hierarchy: L3 (top) → L2 → L1 (bottom)
-	order := []PurdueLevel{L3, L2, L1}
-
-	for levelIdx, lvl := range order {
-		if len(levels[lvl]) == 0 {
-			continue
-		}
-
-		levelName := map[PurdueLevel]string{
-			L3: "Level 3: Manufacturing Operations Management",
-			L2: "Level 2: Supervisory Control",
-			L1: "Level 1: Basic Control & I/O",
-		}[lvl]
-
-		levelColor := map[PurdueLevel]string{
-			L3: "#e6f3ff", // Light blue - Management
-			L2: "#fff2e6", // Light orange - Control
-			L1: "#e8f6e8", // Light green - Field
-		}[lvl]
-
-		borderColor := map[PurdueLevel]string{
-			L3: "#0066cc", // Blue
-			L2: "#ff8800", // Orange
-			L1: "#00aa44", // Green
-		}[lvl]
-
-		fmt.Fprintf(w, "  subgraph cluster_L%d {\n", 3-levelIdx)
-		fmt.Fprintf(w, "    label=\"%s\";\n", levelName)
-		fmt.Fprintf(w, "    style=filled;\n")
-		fmt.Fprintf(w, "    bgcolor=\"%s\";\n", levelColor)
-		fmt.Fprintf(w, "    color=\"%s\";\n", borderColor)
-		fmt.Fprintf(w, "    penwidth=3;\n")
-		fmt.Fprintf(w, "    fontsize=14;\n")
-		fmt.Fprintf(w, "    fontname=\"Arial Bold\";\n")
-		fmt.Fprintf(w, "    margin=20;\n")
-
-		for _, ip := range levels[lvl] {
-			host := g.Hosts[ip]
-
-			// Build comprehensive asset label with full details
-			label := buildAssetLabel(host, true) // true = full details for Purdue
-
-			nodeColor := levelColor
-			if strings.Contains(strings.ToLower(label), "plc") {
-				nodeColor = "#ccffcc" // Highlight PLCs
-			} else if strings.Contains(strings.ToLower(label), "hmi") {
-				nodeColor = "#ffffcc" // Highlight HMIs
-			} else if strings.Contains(strings.ToLower(label), "server") {
-				nodeColor = "#ffccff" // Highlight servers
-			}
-
-			fmt.Fprintf(w, "    \"%s\" [label=\"%s\", fillcolor=\"%s\"];\n",
-				ip, label, nodeColor)
-		}
-		fmt.Fprintln(w, "  }")
-		fmt.Fprintln(w, "")
+	// Level 4: Enterprise (if detected)
+	if systems.Enterprise.HasSystems() {
+		writeEnterpriseLevel(w, &systems.Enterprise)
 	}
 
-	// Add invisible edges to enforce proper vertical ordering
-	if len(levels[L3]) > 0 && len(levels[L2]) > 0 {
-		fmt.Fprintf(w, "  \"%s\" -> \"%s\" [style=invis, weight=10];\n", levels[L3][0], levels[L2][0])
-	}
-	if len(levels[L2]) > 0 && len(levels[L1]) > 0 {
-		fmt.Fprintf(w, "  \"%s\" -> \"%s\" [style=invis, weight=10];\n", levels[L2][0], levels[L1][0])
+	// Level 3.5: DMZ (if detected)
+	if systems.DMZ.HasSystems() {
+		writeDMZLevel(w, &systems.DMZ)
 	}
 
-	// Show functional protocol flows
-	writeFunctionalFlows(w, g)
+	// Level 3: Operations Systems
+	if systems.Operations.HasSystems() {
+		writeOperationsLevel(w, &systems.Operations)
+	}
+
+	// Level 2: Supervisory Control
+	if systems.Supervisory.HasSystems() {
+		writeSupervisoryLevel(w, &systems.Supervisory)
+	}
+
+	// Level 1: Process Control
+	if systems.ProcessControl.HasSystems() {
+		writeProcessControlLevel(w, &systems.ProcessControl)
+	}
+
+	// Level 0: Physical Process (if detected)
+	if systems.Physical.HasSystems() {
+		writePhysicalLevel(w, &systems.Physical)
+	}
+
+	// Add network separation lines
+	writeNetworkSeparations(w, &systems)
+
+	// Force vertical ordering with invisible edges between levels
+	writeVerticalOrdering(w, &systems)
+
+	// Write logical system connections with protocols
+	writeSystemConnections(w, g, &systems)
 
 	fmt.Fprintln(w, "}")
 	w.Flush()
@@ -667,6 +632,445 @@ func writeFunctionalFlows(w *bufio.Writer, g *Graph) {
 		fmt.Fprintf(w, "  \"%s\" -> \"%s\" [label=\"%s\", color=\"%s\"];\n",
 			e.Src, e.Dst, label, edgeColor)
 	}
+}
+
+// SystemGroups represents the logical grouping of devices into functional systems
+type SystemGroups struct {
+	Enterprise     PurdueSystemLevel
+	DMZ            PurdueSystemLevel
+	Operations     PurdueSystemLevel
+	Supervisory    PurdueSystemLevel
+	ProcessControl PurdueSystemLevel
+	Physical       PurdueSystemLevel
+}
+
+// PurdueSystemLevel represents a level in the Purdue model with functional systems
+type PurdueSystemLevel struct {
+	Databases    []SystemGroup
+	Gateways     []SystemGroup
+	Servers      []SystemGroup
+	Clients      []SystemGroup
+	Controllers  []SystemGroup
+	Modules      []SystemGroup
+	FieldDevices []SystemGroup
+}
+
+// SystemGroup represents a functional system (like "Local Ignition Server" or "SQL DB")
+type SystemGroup struct {
+	Name    string
+	Type    string
+	Devices []*Host
+	Color   string
+	Icon    string
+}
+
+// HasSystems returns true if this level has any systems
+func (level *PurdueSystemLevel) HasSystems() bool {
+	return len(level.Databases) > 0 || len(level.Gateways) > 0 ||
+		len(level.Servers) > 0 || len(level.Clients) > 0 ||
+		len(level.Controllers) > 0 || len(level.Modules) > 0 ||
+		len(level.FieldDevices) > 0
+}
+
+// groupDevicesIntoSystems analyzes the network and groups devices into functional systems
+func groupDevicesIntoSystems(g *Graph) SystemGroups {
+	systems := SystemGroups{}
+
+	for _, host := range g.Hosts {
+		system := classifySystemType(host)
+		level := determinePurdueLevel(host)
+
+		switch level {
+		case "Enterprise":
+			addSystemToLevel(&systems.Enterprise, system)
+		case "DMZ":
+			addSystemToLevel(&systems.DMZ, system)
+		case "Operations":
+			addSystemToLevel(&systems.Operations, system)
+		case "Supervisory":
+			addSystemToLevel(&systems.Supervisory, system)
+		case "ProcessControl":
+			addSystemToLevel(&systems.ProcessControl, system)
+		case "Physical":
+			addSystemToLevel(&systems.Physical, system)
+		}
+	}
+
+	return systems
+}
+
+// classifySystemType determines what type of system a device represents
+func classifySystemType(host *Host) SystemGroup {
+	vendor := strings.ToLower(host.Vendor)
+	deviceName := strings.ToLower(host.DeviceName)
+	hostname := strings.ToLower(host.Hostname)
+
+	// Database systems
+	if strings.Contains(vendor, "sql") || strings.Contains(deviceName, "database") ||
+		strings.Contains(hostname, "db") || strings.Contains(hostname, "sql") {
+		return SystemGroup{
+			Name:    "SQL Database",
+			Type:    "database",
+			Devices: []*Host{host},
+			Color:   "#f0f8ff",
+			Icon:    "database",
+		}
+	}
+
+	// HMI/Client systems
+	if strings.Contains(vendor, "vmware") || strings.Contains(deviceName, "client") ||
+		strings.Contains(hostname, "hmi") || strings.Contains(hostname, "client") {
+		return SystemGroup{
+			Name:    "HMI Client",
+			Type:    "client",
+			Devices: []*Host{host},
+			Color:   "#fff8e1",
+			Icon:    "desktop",
+		}
+	}
+
+	// Server systems
+	if strings.Contains(vendor, "server") || strings.Contains(deviceName, "server") ||
+		strings.Contains(hostname, "server") || strings.Contains(vendor, "lantronix") {
+		return SystemGroup{
+			Name:    "Ignition Server",
+			Type:    "server",
+			Devices: []*Host{host},
+			Color:   "#e8f5e8",
+			Icon:    "server",
+		}
+	}
+
+	// PLC/Controller systems
+	if strings.Contains(vendor, "rockwell") || strings.Contains(deviceName, "plc") ||
+		strings.Contains(hostname, "plc") || host.ICSScore > 50 {
+		return SystemGroup{
+			Name:    "Allen-Bradley PLC",
+			Type:    "controller",
+			Devices: []*Host{host},
+			Color:   "#fff3e0",
+			Icon:    "controller",
+		}
+	}
+
+	// Gateway/Router systems
+	if strings.Contains(vendor, "cisco") || strings.Contains(deviceName, "router") ||
+		strings.Contains(hostname, "gateway") || strings.Contains(hostname, "router") {
+		return SystemGroup{
+			Name:    "Industrial Gateway",
+			Type:    "gateway",
+			Devices: []*Host{host},
+			Color:   "#e3f2fd",
+			Icon:    "router",
+		}
+	}
+
+	// Default field device
+	return SystemGroup{
+		Name:    "Field Device",
+		Type:    "field",
+		Devices: []*Host{host},
+		Color:   "#f9f9f9",
+		Icon:    "device",
+	}
+}
+
+// determinePurdueLevel maps a host to the appropriate Purdue level
+func determinePurdueLevel(host *Host) string {
+	// Use existing classification if available
+	switch host.InferredLevel {
+	case L3:
+		return "Operations"
+	case L2:
+		return "Supervisory"
+	case L1:
+		return "ProcessControl"
+	default:
+		// Enhanced classification based on vendor and role
+		vendor := strings.ToLower(host.Vendor)
+
+		if strings.Contains(vendor, "vmware") || strings.Contains(vendor, "sql") {
+			return "Operations"
+		}
+		if strings.Contains(vendor, "rockwell") && host.ICSScore > 30 {
+			return "Supervisory"
+		}
+		if strings.Contains(vendor, "rockwell") || host.ICSScore > 0 {
+			return "ProcessControl"
+		}
+
+		return "ProcessControl"
+	}
+}
+
+// addSystemToLevel adds a system to the appropriate level category
+func addSystemToLevel(level *PurdueSystemLevel, system SystemGroup) {
+	switch system.Type {
+	case "database":
+		level.Databases = append(level.Databases, system)
+	case "gateway":
+		level.Gateways = append(level.Gateways, system)
+	case "server":
+		level.Servers = append(level.Servers, system)
+	case "client":
+		level.Clients = append(level.Clients, system)
+	case "controller":
+		level.Controllers = append(level.Controllers, system)
+	default:
+		level.FieldDevices = append(level.FieldDevices, system)
+	}
+}
+
+// writeEnterpriseLevel writes the Enterprise level (Level 4) systems
+func writeEnterpriseLevel(w *bufio.Writer, level *PurdueSystemLevel) {
+	fmt.Fprintln(w, "  // Level 4: Enterprise")
+	fmt.Fprintln(w, "  subgraph cluster_enterprise {")
+	fmt.Fprintln(w, "    rank=source;")
+	fmt.Fprintln(w, "    label=\"Enterprise\\nWorkforce Management | Order Management | Inventory Management\";")
+	fmt.Fprintln(w, "    style=filled;")
+	fmt.Fprintln(w, "    bgcolor=\"#e6f3ff\";")
+	fmt.Fprintln(w, "    color=\"#0066cc\";")
+	fmt.Fprintln(w, "    penwidth=3;")
+	fmt.Fprintln(w, "    fontsize=12;")
+
+	writeSystemsInLevel(w, level, "enterprise")
+
+	fmt.Fprintln(w, "  }")
+	fmt.Fprintln(w, "")
+}
+
+// writeDMZLevel writes the DMZ level (Level 3.5) systems
+func writeDMZLevel(w *bufio.Writer, level *PurdueSystemLevel) {
+	fmt.Fprintln(w, "  // Level 3.5: DMZ")
+	fmt.Fprintln(w, "  subgraph cluster_dmz {")
+	fmt.Fprintln(w, "    rank=1;")
+	fmt.Fprintln(w, "    label=\"DMZ\\nProxy | Firewall | Separation of Networks\";")
+	fmt.Fprintln(w, "    style=filled;")
+	fmt.Fprintln(w, "    bgcolor=\"#f5f5f5\";")
+	fmt.Fprintln(w, "    color=\"#666666\";")
+	fmt.Fprintln(w, "    penwidth=2;")
+	fmt.Fprintln(w, "    fontsize=11;")
+
+	writeSystemsInLevel(w, level, "dmz")
+
+	fmt.Fprintln(w, "  }")
+	fmt.Fprintln(w, "")
+}
+
+// writeOperationsLevel writes the Operations level (Level 3) systems
+func writeOperationsLevel(w *bufio.Writer, level *PurdueSystemLevel) {
+	fmt.Fprintln(w, "  // Level 3: Operations Systems")
+	fmt.Fprintln(w, "  subgraph cluster_operations {")
+	fmt.Fprintln(w, "    label=\"Operations Systems\\nMES | Scheduling | OEE | Quality Management\";")
+	fmt.Fprintln(w, "    style=filled;")
+	fmt.Fprintln(w, "    bgcolor=\"#e6f3ff\";")
+	fmt.Fprintln(w, "    color=\"#0066cc\";")
+	fmt.Fprintln(w, "    penwidth=3;")
+	fmt.Fprintln(w, "    fontsize=12;")
+
+	writeSystemsInLevel(w, level, "operations")
+
+	fmt.Fprintln(w, "  }")
+	fmt.Fprintln(w, "")
+}
+
+// writeSupervisoryLevel writes the Supervisory Control level (Level 2) systems
+func writeSupervisoryLevel(w *bufio.Writer, level *PurdueSystemLevel) {
+	fmt.Fprintln(w, "  // Level 2: Supervisory Control")
+	fmt.Fprintln(w, "  subgraph cluster_supervisory {")
+	fmt.Fprintln(w, "    label=\"Supervisory Control\\nSCADA | HMI | Alarming | Reporting | Trending\";")
+	fmt.Fprintln(w, "    style=filled;")
+	fmt.Fprintln(w, "    bgcolor=\"#fff2e6\";")
+	fmt.Fprintln(w, "    color=\"#ff8800\";")
+	fmt.Fprintln(w, "    penwidth=3;")
+	fmt.Fprintln(w, "    fontsize=12;")
+
+	writeSystemsInLevel(w, level, "supervisory")
+
+	fmt.Fprintln(w, "  }")
+	fmt.Fprintln(w, "")
+}
+
+// writeProcessControlLevel writes the Process Control level (Level 1) systems
+func writeProcessControlLevel(w *bufio.Writer, level *PurdueSystemLevel) {
+	fmt.Fprintln(w, "  // Level 1: Process Control")
+	fmt.Fprintln(w, "  subgraph cluster_process {")
+	fmt.Fprintln(w, "    label=\"Process Control\\nPLCs | RTUs\";")
+	fmt.Fprintln(w, "    style=filled;")
+	fmt.Fprintln(w, "    bgcolor=\"#e8f6e8\";")
+	fmt.Fprintln(w, "    color=\"#00aa44\";")
+	fmt.Fprintln(w, "    penwidth=3;")
+	fmt.Fprintln(w, "    fontsize=12;")
+
+	writeSystemsInLevel(w, level, "process")
+
+	fmt.Fprintln(w, "  }")
+	fmt.Fprintln(w, "")
+}
+
+// writePhysicalLevel writes the Physical Process level (Level 0) systems
+func writePhysicalLevel(w *bufio.Writer, level *PurdueSystemLevel) {
+	fmt.Fprintln(w, "  // Level 0: Physical Process")
+	fmt.Fprintln(w, "  subgraph cluster_physical {")
+	fmt.Fprintln(w, "    rank=sink;")
+	fmt.Fprintln(w, "    label=\"Physical Process\\nSensors | Actuators\";")
+	fmt.Fprintln(w, "    style=filled;")
+	fmt.Fprintln(w, "    bgcolor=\"#f0f0f0\";")
+	fmt.Fprintln(w, "    color=\"#888888\";")
+	fmt.Fprintln(w, "    penwidth=2;")
+	fmt.Fprintln(w, "    fontsize=11;")
+
+	writeSystemsInLevel(w, level, "physical")
+
+	fmt.Fprintln(w, "  }")
+	fmt.Fprintln(w, "")
+}
+
+// writeSystemsInLevel writes all systems within a Purdue level
+func writeSystemsInLevel(w *bufio.Writer, level *PurdueSystemLevel, levelName string) {
+	// Write databases
+	for i, system := range level.Databases {
+		nodeID := fmt.Sprintf("%s_db_%d", levelName, i)
+		fmt.Fprintf(w, "    %s [label=\"%s\", shape=cylinder, style=filled, fillcolor=\"%s\"];\n",
+			nodeID, system.Name, system.Color)
+	}
+
+	// Write gateways
+	for i, system := range level.Gateways {
+		nodeID := fmt.Sprintf("%s_gw_%d", levelName, i)
+		fmt.Fprintf(w, "    %s [label=\"%s\", shape=house, style=filled, fillcolor=\"%s\"];\n",
+			nodeID, system.Name, system.Color)
+	}
+
+	// Write servers
+	for i, system := range level.Servers {
+		nodeID := fmt.Sprintf("%s_srv_%d", levelName, i)
+		fmt.Fprintf(w, "    %s [label=\"%s\", shape=rect, style=\"rounded,filled\", fillcolor=\"%s\"];\n",
+			nodeID, system.Name, system.Color)
+	}
+
+	// Write clients
+	for i, system := range level.Clients {
+		nodeID := fmt.Sprintf("%s_cli_%d", levelName, i)
+		fmt.Fprintf(w, "    %s [label=\"%s\", shape=rect, style=\"rounded,filled\", fillcolor=\"%s\"];\n",
+			nodeID, system.Name, system.Color)
+	}
+
+	// Write controllers
+	for i, system := range level.Controllers {
+		nodeID := fmt.Sprintf("%s_ctrl_%d", levelName, i)
+		fmt.Fprintf(w, "    %s [label=\"%s\", shape=rect, style=\"rounded,filled\", fillcolor=\"%s\"];\n",
+			nodeID, system.Name, system.Color)
+	}
+
+	// Write field devices
+	for i, system := range level.FieldDevices {
+		nodeID := fmt.Sprintf("%s_field_%d", levelName, i)
+		fmt.Fprintf(w, "    %s [label=\"%s\", shape=oval, style=filled, fillcolor=\"%s\"];\n",
+			nodeID, system.Name, system.Color)
+	}
+}
+
+// writeNetworkSeparations draws network separation lines between levels
+func writeNetworkSeparations(w *bufio.Writer, systems *SystemGroups) {
+	// Add visible separation lines if needed
+	fmt.Fprintln(w, "  // Network Separations")
+
+	if systems.Enterprise.HasSystems() && systems.DMZ.HasSystems() {
+		fmt.Fprintln(w, "  firewall1 [label=\"Firewall\", shape=diamond, style=filled, fillcolor=\"#ffcccc\"];")
+	}
+
+	if systems.Operations.HasSystems() && systems.Supervisory.HasSystems() {
+		fmt.Fprintln(w, "  firewall2 [label=\"Industrial Firewall\", shape=diamond, style=filled, fillcolor=\"#ffcccc\"];")
+	}
+
+	fmt.Fprintln(w, "")
+}
+
+// writeSystemConnections draws logical connections between systems
+func writeSystemConnections(w *bufio.Writer, g *Graph, systems *SystemGroups) {
+	fmt.Fprintln(w, "  // System Connections")
+
+	// For now, keep simplified protocol connections
+	// This would be enhanced to show system-to-system flows
+	processedPairs := make(map[string]bool)
+
+	for _, e := range g.Edges {
+		srcHost := g.Hosts[e.Src]
+		dstHost := g.Hosts[e.Dst]
+
+		// Skip unknown devices
+		if srcHost.InferredLevel == Unknown || dstHost.InferredLevel == Unknown {
+			continue
+		}
+
+		// Avoid duplicate bidirectional edges
+		pairKey := e.Src + "<->" + e.Dst
+		reversePairKey := e.Dst + "<->" + e.Src
+		if processedPairs[pairKey] || processedPairs[reversePairKey] {
+			continue
+		}
+		processedPairs[pairKey] = true
+
+		// Show key industrial protocols only
+		protocolName := string(e.Protocol)
+		var edgeColor, label string
+
+		switch {
+		case strings.Contains(protocolName, "ENIP"):
+			edgeColor = "#00aa44"
+			label = "EtherNet/IP"
+		case strings.Contains(protocolName, "Modbus"):
+			edgeColor = "#ff8800"
+			label = "Modbus"
+		case strings.Contains(protocolName, "S7"):
+			edgeColor = "#0066cc"
+			label = "S7"
+		case strings.Contains(protocolName, "OPC"):
+			edgeColor = "#cc00cc"
+			label = "OPC"
+		default:
+			continue // Skip non-industrial protocols
+		}
+
+		// Map IPs to system IDs (simplified approach)
+		srcLevel := mapHostToLevelName(srcHost)
+		dstLevel := mapHostToLevelName(dstHost)
+
+		if srcLevel != "" && dstLevel != "" {
+			fmt.Fprintf(w, "  \"%s\" -> \"%s\" [label=\"%s\", color=\"%s\", fontsize=9];\n",
+				e.Src, e.Dst, label, edgeColor)
+		}
+	}
+}
+
+// mapHostToLevelName maps a host to its level name for connections
+func mapHostToLevelName(host *Host) string {
+	switch host.InferredLevel {
+	case L3:
+		return "operations"
+	case L2:
+		return "supervisory"
+	case L1:
+		return "process"
+	default:
+		return ""
+	}
+}
+
+// writeVerticalOrdering forces vertical ordering with rank constraints
+func writeVerticalOrdering(w *bufio.Writer, systems *SystemGroups) {
+	fmt.Fprintln(w, "  // Force vertical ordering with rank constraints")
+
+	// Use rank constraints to force vertical layout
+	if systems.Operations.HasSystems() {
+		fmt.Fprintln(w, "  { rank=min; operations_srv_0; }")
+	}
+	if systems.Supervisory.HasSystems() && systems.ProcessControl.HasSystems() {
+		fmt.Fprintln(w, "  { rank=max; process_ctrl_0; }")
+	}
+
+	fmt.Fprintln(w, "")
 }
 
 // Network identification and segmentation structures
