@@ -30,3 +30,5 @@ output/
 .backup_old_files/
 cipgram
 main_old.go
+
+.DS_STORE
