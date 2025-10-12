@@ -111,11 +111,11 @@ const (
 	Unknown PurdueLevel = "Unknown"
 
 	// IEC 62443 Zones
-	ManufacturingZone IEC62443Zone = "Manufacturing Zone"
-	DMZZone           IEC62443Zone = "DMZ Zone"
-	EnterpriseZone    IEC62443Zone = "Enterprise Zone"
-	SafetyZone        IEC62443Zone = "Safety Zone"
-	RemoteAccessZone  IEC62443Zone = "Remote Access Zone"
+	IndustrialZone   IEC62443Zone = "Industrial Zone"
+	DMZZone          IEC62443Zone = "DMZ Zone"
+	EnterpriseZone   IEC62443Zone = "Enterprise Zone"
+	SafetyZone       IEC62443Zone = "Safety Zone"
+	RemoteAccessZone IEC62443Zone = "Remote Access Zone"
 
 	// Criticality Levels
 	CriticalAsset CriticalityLevel = "Critical"

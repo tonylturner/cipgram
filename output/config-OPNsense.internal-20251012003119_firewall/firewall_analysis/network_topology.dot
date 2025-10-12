@@ -24,26 +24,8 @@ digraph FirewallTopology {
   ];
 
   // Network Segments
-  net_wan [
-    label="wan\n(WAN)\n\nZone: DMZ Zone\nRisk: Medium\nType: Internet";
-    shape=box;
-    style="filled,rounded";
-    fillcolor="#ffe0b2";
-    color="#f57c00";
-    penwidth=2;
-    fontsize=10;
-  ];
-  net_lan [
-    label="lan\n10.30.0.2/24\n(site)\n\nZone: Manufacturing Zone\nRisk: High\nType: General";
-    shape=box;
-    style="filled,rounded";
-    fillcolor="#c8e6c9";
-    color="#2e7d32";
-    penwidth=2;
-    fontsize=10;
-  ];
   net_opt1 [
-    label="opt1\n10.10.0.2/24\n(corp)\n\nZone: Enterprise Zone\nRisk: Low\nType: General";
+    label="opt1\n10.10.0.2/24\n(corp)\n\nZone: Enterprise Zone\nRisk: Low\nType: Corporate IT";
     shape=box;
     style="filled,rounded";
     fillcolor="#e1bee7";
@@ -61,11 +43,29 @@ digraph FirewallTopology {
     fontsize=10;
   ];
   net_opt3 [
-    label="opt3\n10.40.0.2/24\n(cell)\n\nZone: Enterprise Zone\nRisk: Low\nType: General";
+    label="opt3\n10.40.0.2/24\n(cell)\n\nZone: Manufacturing Zone\nRisk: High\nType: Production OT";
     shape=box;
     style="filled,rounded";
-    fillcolor="#e1bee7";
-    color="#7b1fa2";
+    fillcolor="#c8e6c9";
+    color="#2e7d32";
+    penwidth=2;
+    fontsize=10;
+  ];
+  net_wan [
+    label="wan\n(WAN)\n\nZone: DMZ Zone\nRisk: Medium\nType: Internet";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#ffe0b2";
+    color="#f57c00";
+    penwidth=2;
+    fontsize=10;
+  ];
+  net_lan [
+    label="lan\n10.30.0.2/24\n(site)\n\nZone: Manufacturing Zone\nRisk: High\nType: Corporate IT";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#c8e6c9";
+    color="#2e7d32";
     penwidth=2;
     fontsize=10;
   ];
@@ -103,4 +103,15 @@ digraph FirewallTopology {
   ];
 
   // Security Rules (as edge labels)
+
+  // Security Rules Summary
+  rules_summary [
+    label="🔒 Security Rules Summary\n\n
+    ALLOW: lan → any\n    ALLOW: lan → any\n    DENY: any → any\n";
+    shape=note;
+    style="filled,rounded";
+    fillcolor="#fff9c4";
+    color="#f57f17";
+    fontsize=9;
+  ];
 }

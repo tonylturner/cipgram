@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<opnsense>
+  <system>
+    <hostname>test-weak</hostname>
+    <domain>local</domain>
+  </system>
+
+  <interfaces>
+    <wan>
+      <descr>WAN</descr>
+      <ipaddr>dhcp</ipaddr>
+    </wan>
+    <lan>
+      <descr>LAN</descr>
+      <ipaddr>10.30.0.2</ipaddr>
+      <subnet>24</subnet>
+    </lan>
+    <opt1>
+      <descr>corp</descr>
+      <ipaddr>10.10.0.2</ipaddr>
+      <subnet>24</subnet>
+    </opt1>
+    <opt2>
+      <descr>dmz</descr>
+      <ipaddr>10.20.0.2</ipaddr>
+      <subnet>24</subnet>
+    </opt2>
+    <opt3>
+      <descr>cell</descr>
+      <ipaddr>10.40.0.2</ipaddr>
+      <subnet>24</subnet>
+    </opt3>
+  </interfaces>
+
+  <filter>
+    <!-- Dangerous LAN to any rules -->
+    <rule>
+      <type>pass</type>
+      <interface>lan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <network>lan</network>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <descr>Default allow LAN to any rule</descr>
+    </rule>
+
+    <rule>
+      <type>pass</type>
+      <interface>lan</interface>
+      <ipprotocol>inet6</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <network>lan</network>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <descr>Default allow LAN IPv6 to any rule</descr>
+    </rule>
+  </filter>
+</opnsense>

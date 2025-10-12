@@ -1,0 +1,42 @@
+digraph FirewallTopology {
+  rankdir=LR;
+  node [fontname="Arial", fontsize=10];
+  edge [fontname="Arial", fontsize=9];
+  bgcolor=white;
+  splines=ortho;
+  nodesep=1.0;
+  ranksep=2.0;
+
+  label="Firewall Network Topology\nfwconfigs/water_treatment_secure.xml\nGenerated: 2025-10-11 22:00:46";
+  labelloc=t;
+  fontsize=14;
+
+  // Central Firewall
+  firewall [
+    label="🔥 Firewall\n(OPNsense)\n\nInterfaces:";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#e3f2fd";
+    color="#1976d2";
+    penwidth=3;
+    fontsize=12;
+    fontname="Arial Bold";
+  ];
+
+  // Network Segments
+
+  // Firewall to Network Connections
+
+  // Security Rules (as edge labels)
+
+  // Security Rules Summary
+  rules_summary [
+    label="🔒 Security Rules Summary\n\n
+    ALLOW: lan → any\n    ALLOW: opt1 → opt2\n    ALLOW: opt1 → opt3\n    ALLOW: opt1 → any\n    ALLOW: opt2 → any\n    ... and 9 more rules";
+    shape=note;
+    style="filled,rounded";
+    fillcolor="#fff9c4";
+    color="#f57f17";
+    fontsize=9;
+  ];
+}

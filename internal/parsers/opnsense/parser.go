@@ -113,8 +113,14 @@ func (p *OPNsenseParser) parseInterfaces(model *interfaces.NetworkModel) error {
 	allInterfaces := p.config.Interfaces.GetAllInterfaces()
 
 	for name, iface := range allInterfaces {
-		if iface == nil || iface.Enable != "1" {
-			continue // Skip disabled or nil interfaces
+		if iface == nil {
+			continue // Skip nil interfaces
+		}
+
+		// Skip explicitly disabled interfaces (enable="0")
+		// If no enable field is present, treat as enabled (OPNsense default)
+		if iface.Enable == "0" {
+			continue
 		}
 
 		// Skip virtual and internal interfaces for now
@@ -147,14 +153,15 @@ func (p *OPNsenseParser) parseInterfaces(model *interfaces.NetworkModel) error {
 
 // parseFirewallRules creates security policies from firewall rules
 func (p *OPNsenseParser) parseFirewallRules(model *interfaces.NetworkModel) error {
-	for _, rule := range p.config.Filter.Rules {
-		// Skip rules without UUID (malformed)
-		if rule.UUID == "" {
-			continue
+	for i, rule := range p.config.Filter.Rules {
+		// Generate ID: use UUID if available, otherwise create one from index
+		ruleID := rule.UUID
+		if ruleID == "" {
+			ruleID = fmt.Sprintf("rule-%d", i+1)
 		}
 
 		policy := &interfaces.SecurityPolicy{
-			ID:          rule.UUID,
+			ID:          ruleID,
 			Description: rule.Descr,
 			Enabled:     true, // OPNsense doesn't have disabled field in this format
 			Action:      p.mapRuleAction(rule.Type),
@@ -165,13 +172,37 @@ func (p *OPNsenseParser) parseFirewallRules(model *interfaces.NetworkModel) erro
 		policy.Source = p.parseRuleTarget(rule.Source)
 		policy.Destination = p.parseRuleTarget(rule.Destination)
 
-		// Parse protocol
+		// Parse protocol and ports
 		if rule.Protocol != "" {
 			policy.Protocol = interfaces.Protocol(rule.Protocol)
 		}
 
+		// Parse ports and add them to the policy
+		policy.Ports = p.parsePorts(rule.SrcPort, rule.DstPort, rule.Protocol)
+
 		model.Policies = append(model.Policies, policy)
 	}
+
+	// Add implicit default deny rule (OPNsense behavior)
+	defaultDeny := &interfaces.SecurityPolicy{
+		ID:          "implicit-default-deny",
+		Description: "Implicit default deny (built-in OPNsense behavior)",
+		Enabled:     true,
+		Action:      "DENY",
+		Zone:        "all",
+		Source: interfaces.NetworkRange{
+			CIDR: "any",
+			IPs:  []string{},
+		},
+		Destination: interfaces.NetworkRange{
+			CIDR: "any",
+			IPs:  []string{},
+		},
+		Protocol: "any",
+		Ports:    []interfaces.Port{},
+	}
+
+	model.Policies = append(model.Policies, defaultDeny)
 
 	return nil
 }
@@ -236,24 +267,202 @@ func (p *OPNsenseParser) inferZoneFromInterface(name string, iface *Interface) i
 	case strings.Contains(strings.ToLower(name), "wan"):
 		return interfaces.DMZZone // WAN typically goes to DMZ
 	case strings.Contains(strings.ToLower(name), "lan"):
-		return interfaces.ManufacturingZone // LAN often contains OT devices
+		return interfaces.IndustrialZone // LAN often contains OT devices
 	case strings.Contains(strings.ToLower(purpose), "production"):
-		return interfaces.ManufacturingZone
+		return interfaces.IndustrialZone
 	case strings.Contains(strings.ToLower(purpose), "dmz"):
 		return interfaces.DMZZone
 	case strings.Contains(strings.ToLower(purpose), "management"):
 		return interfaces.EnterpriseZone
+	case strings.Contains(strings.ToLower(purpose), "corporate"):
+		return interfaces.EnterpriseZone
 	case strings.Contains(strings.ToLower(name), "wireguard") || strings.Contains(strings.ToLower(iface.Descr), "wireguard"):
 		return interfaces.RemoteAccessZone
+	// Check for industrial terms directly in interface description
+	case strings.Contains(strings.ToLower(iface.Descr), "cell") ||
+		strings.Contains(strings.ToLower(iface.Descr), "line") ||
+		strings.Contains(strings.ToLower(iface.Descr), "plant") ||
+		strings.Contains(strings.ToLower(iface.Descr), "factory") ||
+		strings.Contains(strings.ToLower(iface.Descr), "manufacturing") ||
+		strings.Contains(strings.ToLower(iface.Descr), "industrial") ||
+		strings.Contains(strings.ToLower(iface.Descr), "scada") ||
+		strings.Contains(strings.ToLower(iface.Descr), "control") ||
+		strings.Contains(strings.ToLower(iface.Descr), "process") ||
+		strings.Contains(strings.ToLower(iface.Descr), "automation"):
+		return interfaces.IndustrialZone
+	// Check for corporate/IT terms directly in interface description
+	case strings.Contains(strings.ToLower(iface.Descr), "corp") ||
+		strings.Contains(strings.ToLower(iface.Descr), "corporate") ||
+		strings.Contains(strings.ToLower(iface.Descr), "office") ||
+		strings.Contains(strings.ToLower(iface.Descr), "business") ||
+		strings.Contains(strings.ToLower(iface.Descr), "enterprise"):
+		return interfaces.EnterpriseZone
+	// "site" is ambiguous - could be manufacturing site or corporate site
+	// Default to Enterprise for general site infrastructure
+	case strings.Contains(strings.ToLower(iface.Descr), "site"):
+		return interfaces.EnterpriseZone
 	default:
 		return interfaces.EnterpriseZone
 	}
 }
 
+// parsePorts parses port specifications from OPNsense rules
+func (p *OPNsenseParser) parsePorts(srcPort, dstPort, protocol string) []interfaces.Port {
+	var ports []interfaces.Port
+
+	// Parse destination ports (most common)
+	if dstPort != "" {
+		ports = append(ports, p.parsePortString(dstPort, "destination", protocol)...)
+	}
+
+	// Parse source ports (less common)
+	if srcPort != "" {
+		ports = append(ports, p.parsePortString(srcPort, "source", protocol)...)
+	}
+
+	return ports
+}
+
+// parsePortString parses a port string like "22,443" or "8080-8090" or "OT_MGMT_PORTS"
+func (p *OPNsenseParser) parsePortString(portStr, direction, protocol string) []interfaces.Port {
+	var ports []interfaces.Port
+
+	if portStr == "" {
+		return ports
+	}
+
+	// Handle aliases (like "OT_MGMT_PORTS", "VENDOR_VPN_PORTS")
+	if !strings.Contains(portStr, ",") && !strings.Contains(portStr, "-") && !isNumeric(portStr) {
+		// This is likely an alias - resolve it if possible, otherwise use as-is
+		resolvedPorts := p.resolvePortAlias(portStr)
+		if resolvedPorts != "" {
+			portStr = resolvedPorts
+		} else {
+			// Keep the alias name for display - use port 0 with protocol containing the alias
+			ports = append(ports, interfaces.Port{
+				Number:   0,                                       // Unknown port number
+				Protocol: fmt.Sprintf("%s:%s", protocol, portStr), // Include alias in protocol
+			})
+			return ports
+		}
+	}
+
+	// Split by commas for multiple ports
+	portParts := strings.Split(portStr, ",")
+	for _, part := range portParts {
+		part = strings.TrimSpace(part)
+
+		if strings.Contains(part, "-") {
+			// Handle port ranges like "8080-8090"
+			rangeParts := strings.Split(part, "-")
+			if len(rangeParts) == 2 {
+				startPort := parsePortNumber(strings.TrimSpace(rangeParts[0]))
+				endPort := parsePortNumber(strings.TrimSpace(rangeParts[1]))
+
+				if startPort > 0 && endPort > 0 && endPort >= startPort {
+					// For ranges, just add the start port with range info in protocol
+					ports = append(ports, interfaces.Port{
+						Number:   uint16(startPort),
+						Protocol: fmt.Sprintf("%s:%d-%d", protocol, startPort, endPort),
+					})
+				}
+			}
+		} else {
+			// Single port
+			portNum := parsePortNumber(part)
+			if portNum > 0 {
+				portName := getPortName(portNum)
+				protocol_with_name := fmt.Sprintf("%s:%s", protocol, portName)
+				ports = append(ports, interfaces.Port{
+					Number:   uint16(portNum),
+					Protocol: protocol_with_name,
+				})
+			}
+		}
+	}
+
+	return ports
+}
+
+// resolvePortAlias tries to resolve port aliases from the configuration
+func (p *OPNsenseParser) resolvePortAlias(aliasName string) string {
+	// Look through aliases to find port type aliases
+	for _, alias := range p.config.Aliases.Alias {
+		if alias.Name == aliasName && alias.Type == "port" {
+			return alias.Address
+		}
+	}
+	return ""
+}
+
+// isNumeric checks if a string contains only digits
+func isNumeric(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return len(s) > 0
+}
+
+// parsePortNumber converts a string to a port number
+func parsePortNumber(s string) int {
+	if !isNumeric(s) {
+		return 0
+	}
+
+	num := 0
+	for _, r := range s {
+		num = num*10 + int(r-'0')
+	}
+
+	if num > 65535 {
+		return 0 // Invalid port
+	}
+
+	return num
+}
+
+// getPortName returns common service names for well-known ports
+func getPortName(port int) string {
+	wellKnownPorts := map[int]string{
+		22:   "SSH",
+		23:   "Telnet",
+		53:   "DNS",
+		80:   "HTTP",
+		123:  "NTP",
+		443:  "HTTPS",
+		502:  "Modbus",
+		1194: "OpenVPN",
+		1883: "MQTT",
+		3389: "RDP",
+		4840: "OPC-UA",
+		8086: "InfluxDB",
+		8883: "MQTTS",
+	}
+
+	if name, exists := wellKnownPorts[port]; exists {
+		return name
+	}
+
+	return fmt.Sprintf("Port-%d", port)
+}
+
 func (p *OPNsenseParser) inferPurpose(descr, ifName string) string {
 	lower := strings.ToLower(descr + " " + ifName)
 
-	if strings.Contains(lower, "production") || strings.Contains(lower, "ot") {
+	// Industrial/OT terms - expanded list
+	if strings.Contains(lower, "production") || strings.Contains(lower, "ot") ||
+		strings.Contains(lower, "cell") || strings.Contains(lower, "line") ||
+		strings.Contains(lower, "plant") || strings.Contains(lower, "factory") ||
+		strings.Contains(lower, "manufacturing") || strings.Contains(lower, "industrial") ||
+		strings.Contains(lower, "scada") || strings.Contains(lower, "hmi") ||
+		strings.Contains(lower, "plc") || strings.Contains(lower, "control") ||
+		strings.Contains(lower, "process") || strings.Contains(lower, "automation") ||
+		strings.Contains(lower, "field") || strings.Contains(lower, "shop") ||
+		strings.Contains(lower, "assembly") || strings.Contains(lower, "packaging") ||
+		strings.Contains(lower, "machining") || strings.Contains(lower, "welding") ||
+		strings.Contains(lower, "robotics") || strings.Contains(lower, "cnc") {
 		return "Production OT"
 	}
 	if strings.Contains(lower, "dmz") {
@@ -264,6 +473,17 @@ func (p *OPNsenseParser) inferPurpose(descr, ifName string) string {
 	}
 	if strings.Contains(lower, "wan") || strings.Contains(lower, "internet") {
 		return "Internet"
+	}
+	// Corporate/IT terms
+	if strings.Contains(lower, "corp") || strings.Contains(lower, "corporate") ||
+		strings.Contains(lower, "office") || strings.Contains(lower, "business") ||
+		strings.Contains(lower, "enterprise") || strings.Contains(lower, "it") {
+		return "Corporate IT"
+	}
+	// Site-wide infrastructure
+	if strings.Contains(lower, "site") || strings.Contains(lower, "campus") ||
+		strings.Contains(lower, "facility") {
+		return "Site Infrastructure"
 	}
 
 	return "General"
@@ -290,7 +510,7 @@ func (p *OPNsenseParser) mapRuleAction(ruleType string) interfaces.RuleAction {
 func (p *OPNsenseParser) calculateSegmentRisk(segment *interfaces.NetworkSegment, policies []*interfaces.SecurityPolicy) interfaces.RiskLevel {
 	// Simple risk assessment based on zone and policies
 	switch segment.Zone {
-	case interfaces.ManufacturingZone:
+	case interfaces.IndustrialZone:
 		return interfaces.HighRisk // Critical OT systems
 	case interfaces.DMZZone:
 		return interfaces.MediumRisk

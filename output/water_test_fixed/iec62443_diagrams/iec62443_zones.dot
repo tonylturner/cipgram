@@ -1,0 +1,57 @@
+digraph IEC62443Zones {
+  rankdir=TB;
+  node [fontname="Arial", fontsize=10];
+  edge [fontname="Arial", fontsize=9, penwidth=2];
+  bgcolor="#f8f9fa";
+
+  label="IEC 62443 Zone & Conduit Analysis\nFirewall Configuration Analysis";
+  labelloc=t;
+  fontsize=16;
+  fontname="Arial Bold";
+
+  subgraph cluster_Manufacturing_Zone {
+    label="Manufacturing Zone";
+    style="filled,bold";
+    bgcolor="#c8e6c9";
+    color="#1b5e20";
+    penwidth=3;
+    fontsize=14;
+    fontname="Arial Bold";
+
+    "opt2" [label="opt2\n10.100.2.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
+    "opt3" [label="opt3\n10.100.3.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
+    "opt5" [label="opt5\n10.50.1.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
+    "lan" [label="lan\n192.168.10.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
+    "opt1" [label="opt1\n10.100.1.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
+  }
+
+  subgraph cluster_DMZ_Zone {
+    label="DMZ Zone";
+    style="filled,bold";
+    bgcolor="#ffe0b2";
+    color="#e65100";
+    penwidth=3;
+    fontsize=14;
+    fontname="Arial Bold";
+
+    "opt4" [label="opt4\n10.200.1.1/24\nRisk: Medium", shape="box", style="rounded,filled", fillcolor="white"];
+    "wan" [label="wan\n\nRisk: Medium", shape="box", style="rounded,filled", fillcolor="white"];
+  }
+
+  // Conduits (Zone Connections)
+
+  // IEC 62443 Legend
+  subgraph cluster_iec_legend {
+    label="IEC 62443 Zones";
+    style=filled;
+    bgcolor="#ffffff";
+    color="#333333";
+    fontsize=12;
+    fontname="Arial Bold";
+
+    mfg_zone [label="Manufacturing Zone\n(Level 0-2)", fillcolor="#c8e6c9", style="filled,rounded", shape="box"];
+    dmz_zone [label="DMZ Zone\n(Network Perimeter)", fillcolor="#ffe0b2", style="filled,rounded", shape="box"];
+    ent_zone [label="Enterprise Zone\n(Level 3-5)", fillcolor="#e1bee7", style="filled,rounded", shape="box"];
+    remote_zone [label="Remote Access Zone\n(VPN/Remote)", fillcolor="#b3e5fc", style="filled,rounded", shape="box"];
+  }
+}

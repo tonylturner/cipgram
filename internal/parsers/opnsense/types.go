@@ -6,6 +6,7 @@ type OPNsenseConfig struct {
 	Interfaces Interfaces `xml:"interfaces"`
 	Filter     Filter     `xml:"filter"`
 	System     System     `xml:"system"`
+	Aliases    Aliases    `xml:"aliases"`
 }
 
 // Interfaces contains all network interface configurations
@@ -60,6 +61,8 @@ type Rule struct {
 	Source      RuleTarget  `xml:"source"`      // Source specification
 	Destination RuleTarget  `xml:"destination"` // Destination specification
 	Protocol    string      `xml:"protocol"`    // tcp, udp, icmp, any
+	SrcPort     string      `xml:"srcport"`     // Source port(s)
+	DstPort     string      `xml:"dstport"`     // Destination port(s)
 	Descr       string      `xml:"descr"`       // Rule description
 	Updated     RuleHistory `xml:"updated"`     // Last update info
 	Created     RuleHistory `xml:"created"`     // Creation info
@@ -85,6 +88,19 @@ type System struct {
 	Domain    string   `xml:"domain"`
 	DNSServer []string `xml:"dnsserver"`
 	Timezone  string   `xml:"timezone"`
+}
+
+// Aliases contains network, host, and port aliases
+type Aliases struct {
+	Alias []Alias `xml:"alias"`
+}
+
+// Alias represents a single alias definition
+type Alias struct {
+	Name    string `xml:"name"`
+	Type    string `xml:"type"`    // network, host, port
+	Address string `xml:"address"` // The actual value(s)
+	Descr   string `xml:"descr"`   // Description
 }
 
 // Helper method to get all interfaces as a slice for easier iteration

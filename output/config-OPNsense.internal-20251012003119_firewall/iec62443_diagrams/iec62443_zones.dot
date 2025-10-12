@@ -9,6 +9,18 @@ digraph IEC62443Zones {
   fontsize=16;
   fontname="Arial Bold";
 
+  subgraph cluster_Enterprise_Zone {
+    label="Enterprise Zone";
+    style="filled,bold";
+    bgcolor="#e1bee7";
+    color="#4a148c";
+    penwidth=3;
+    fontsize=14;
+    fontname="Arial Bold";
+
+    "opt1" [label="opt1\n10.10.0.2/24\nRisk: Low", shape="box", style="rounded,filled", fillcolor="white"];
+  }
+
   subgraph cluster_DMZ_Zone {
     label="DMZ Zone";
     style="filled,bold";
@@ -31,20 +43,8 @@ digraph IEC62443Zones {
     fontsize=14;
     fontname="Arial Bold";
 
+    "opt3" [label="opt3\n10.40.0.2/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
     "lan" [label="lan\n10.30.0.2/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
-  }
-
-  subgraph cluster_Enterprise_Zone {
-    label="Enterprise Zone";
-    style="filled,bold";
-    bgcolor="#e1bee7";
-    color="#4a148c";
-    penwidth=3;
-    fontsize=14;
-    fontname="Arial Bold";
-
-    "opt1" [label="opt1\n10.10.0.2/24\nRisk: Low", shape="box", style="rounded,filled", fillcolor="white"];
-    "opt3" [label="opt3\n10.40.0.2/24\nRisk: Low", shape="box", style="rounded,filled", fillcolor="white"];
   }
 
   // Conduits (Zone Connections)

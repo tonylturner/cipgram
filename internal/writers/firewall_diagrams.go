@@ -57,6 +57,454 @@ func (g *FirewallDiagramGenerator) GenerateNetworkTopologyDiagram(outputPath str
 	return nil
 }
 
+// GenerateFirewallRulesSummary creates a detailed firewall rules summary file
+func (g *FirewallDiagramGenerator) GenerateFirewallRulesSummary(outputPath string) error {
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create rules summary file: %v", err)
+	}
+	defer file.Close()
+
+	w := bufio.NewWriter(file)
+	defer w.Flush()
+
+	// Write header
+	fmt.Fprintf(w, "═══════════════════════════════════════════════════════════════════════════════\n")
+	fmt.Fprintf(w, "                            FIREWALL RULES SUMMARY\n")
+	fmt.Fprintf(w, "═══════════════════════════════════════════════════════════════════════════════\n")
+	fmt.Fprintf(w, "Configuration: %s\n", g.model.Metadata.Source)
+	fmt.Fprintf(w, "Generated: %s\n", g.model.Metadata.Timestamp.Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(w, "Total Networks: %d | Total Policies: %d\n", len(g.model.Networks), len(g.model.Policies))
+	fmt.Fprintf(w, "═══════════════════════════════════════════════════════════════════════════════\n\n")
+
+	// Network Segments Summary
+	fmt.Fprintf(w, "📊 NETWORK SEGMENTS\n")
+	fmt.Fprintf(w, "───────────────────────────────────────────────────────────────────────────────\n")
+	for _, network := range g.model.Networks {
+		fmt.Fprintf(w, "• %-15s | %-18s | %-20s | %-12s | %s\n",
+			network.ID,
+			network.CIDR,
+			network.Zone,
+			network.Risk,
+			network.Purpose)
+	}
+	fmt.Fprintf(w, "\n")
+
+	// Security Policies Detail
+	if len(g.model.Policies) > 0 {
+		fmt.Fprintf(w, "🔒 SECURITY POLICIES\n")
+		fmt.Fprintf(w, "───────────────────────────────────────────────────────────────────────────────\n")
+		fmt.Fprintf(w, "%-6s | %-8s | %-20s | %-20s | %-12s | %-15s | %s\n",
+			"#", "ACTION", "SOURCE", "DESTINATION", "PROTOCOL", "PORTS", "DESCRIPTION")
+		fmt.Fprintf(w, "───────────────────────────────────────────────────────────────────────────────\n")
+
+		for i, policy := range g.model.Policies {
+			// Format source
+			source := "any"
+			if policy.Source.CIDR != "" && policy.Source.CIDR != "any" {
+				source = policy.Source.CIDR
+			} else if len(policy.Source.IPs) > 0 {
+				source = strings.Join(policy.Source.IPs, ",")
+				if len(source) > 18 {
+					source = source[:15] + "..."
+				}
+			}
+
+			// Format destination
+			destination := "any"
+			if policy.Destination.CIDR != "" && policy.Destination.CIDR != "any" {
+				destination = policy.Destination.CIDR
+			} else if len(policy.Destination.IPs) > 0 {
+				destination = strings.Join(policy.Destination.IPs, ",")
+				if len(destination) > 18 {
+					destination = destination[:15] + "..."
+				}
+			}
+
+			// Format protocol
+			protocol := string(policy.Protocol)
+			if protocol == "" {
+				protocol = "any"
+			}
+
+			// Format ports
+			ports := "any"
+			if len(policy.Ports) > 0 {
+				var portStrs []string
+				for _, port := range policy.Ports {
+					if port.Number > 0 {
+						// Extract service name from protocol field if it contains ":"
+						if strings.Contains(port.Protocol, ":") {
+							parts := strings.Split(port.Protocol, ":")
+							if len(parts) >= 2 {
+								serviceName := strings.Join(parts[1:], ":")
+								portStrs = append(portStrs, fmt.Sprintf("%d(%s)", port.Number, serviceName))
+							} else {
+								portStrs = append(portStrs, fmt.Sprintf("%d", port.Number))
+							}
+						} else {
+							portStrs = append(portStrs, fmt.Sprintf("%d", port.Number))
+						}
+					} else {
+						// Port 0 means it's an alias - extract from protocol
+						if strings.Contains(port.Protocol, ":") {
+							parts := strings.Split(port.Protocol, ":")
+							if len(parts) >= 2 {
+								aliasName := strings.Join(parts[1:], ":")
+								portStrs = append(portStrs, aliasName)
+							}
+						}
+					}
+				}
+				if len(portStrs) > 0 {
+					ports = strings.Join(portStrs, ",")
+					if len(ports) > 13 {
+						ports = ports[:10] + "..."
+					}
+				}
+			}
+
+			// Format description - highlight implicit default deny
+			description := policy.Description
+			if description == "" {
+				description = "No description"
+			}
+			if len(description) > 40 {
+				description = description[:37] + "..."
+			}
+
+			// Special formatting for implicit default deny
+			ruleNumber := fmt.Sprintf("%d", i+1)
+			if policy.ID == "implicit-default-deny" {
+				ruleNumber = "∞"                 // Use infinity symbol for implicit rule
+				description = "🔒 " + description // Add lock emoji
+			}
+
+			fmt.Fprintf(w, "%-6s | %-8s | %-20s | %-20s | %-12s | %-15s | %s\n",
+				ruleNumber,
+				policy.Action,
+				source,
+				destination,
+				protocol,
+				ports,
+				description)
+		}
+	} else {
+		fmt.Fprintf(w, "🔒 SECURITY POLICIES\n")
+		fmt.Fprintf(w, "───────────────────────────────────────────────────────────────────────────────\n")
+		fmt.Fprintf(w, "No explicit firewall rules found in configuration.\n")
+		fmt.Fprintf(w, "This may indicate default allow/deny policies or incomplete rule parsing.\n")
+	}
+
+	fmt.Fprintf(w, "\n")
+
+	// Zone-based Risk Assessment
+	fmt.Fprintf(w, "⚠️  RISK ASSESSMENT BY ZONE\n")
+	fmt.Fprintf(w, "───────────────────────────────────────────────────────────────────────────────\n")
+
+	zoneRisks := make(map[interfaces.IEC62443Zone][]string)
+	for _, network := range g.model.Networks {
+		zoneRisks[network.Zone] = append(zoneRisks[network.Zone],
+			fmt.Sprintf("%s (%s)", network.ID, network.CIDR))
+	}
+
+	for zone, networks := range zoneRisks {
+		var riskLevel string
+		switch zone {
+		case interfaces.IndustrialZone:
+			riskLevel = "HIGH RISK - Critical OT systems"
+		case interfaces.DMZZone:
+			riskLevel = "MEDIUM RISK - Internet exposed"
+		case interfaces.EnterpriseZone:
+			riskLevel = "LOW RISK - IT systems"
+		case interfaces.RemoteAccessZone:
+			riskLevel = "LOW RISK - Controlled access"
+		default:
+			riskLevel = "UNKNOWN RISK"
+		}
+
+		fmt.Fprintf(w, "• %-25s: %s\n", zone, riskLevel)
+		for _, network := range networks {
+			fmt.Fprintf(w, "  └─ %s\n", network)
+		}
+		fmt.Fprintf(w, "\n")
+	}
+
+	// Recommendations with specific rule analysis
+	fmt.Fprintf(w, "💡 SEGMENTATION RECOMMENDATIONS\n")
+	fmt.Fprintf(w, "───────────────────────────────────────────────────────────────────────────────\n")
+	fmt.Fprintf(w, "🔒 IMPLICIT DEFAULT DENY: OPNsense has a built-in default deny rule (∞) that\n")
+	fmt.Fprintf(w, "   blocks all traffic not explicitly allowed by the rules above. This provides\n")
+	fmt.Fprintf(w, "   a secure-by-default stance - only explicitly permitted traffic flows.\n")
+	fmt.Fprintf(w, "\n")
+
+	// Analyze rules for specific security issues
+	fmt.Fprintf(w, "🚨 CRITICAL SECURITY ISSUES IDENTIFIED:\n")
+	fmt.Fprintf(w, "\n")
+
+	// Find and highlight dangerous rules
+	anyToAnyRules := []string{}
+	manufacturingZoneRisks := []string{}
+	dmzRisks := []string{}
+
+	for i, policy := range g.model.Policies {
+		if policy.ID == "implicit-default-deny" {
+			continue // Skip the implicit rule
+		}
+
+		ruleNum := fmt.Sprintf("#%d", i+1)
+		isAnySource := policy.Source.CIDR == "any" || policy.Source.CIDR == ""
+		isAnyDest := policy.Destination.CIDR == "any" || policy.Destination.CIDR == ""
+		isAnyPorts := len(policy.Ports) == 0
+
+		// Identify any-to-any rules and overly broad rules
+		if policy.Action == "ALLOW" {
+			// Check for any source to any destination
+			if isAnySource && isAnyDest {
+				anyToAnyRules = append(anyToAnyRules, fmt.Sprintf("   %s: %s", ruleNum, policy.Description))
+			} else if isAnyDest && isAnyPorts && (string(policy.Protocol) == "any" || string(policy.Protocol) == "") {
+				// Check for specific source to any destination with any protocol/ports (also very dangerous)
+				anyToAnyRules = append(anyToAnyRules, fmt.Sprintf("   %s: %s (Source: %s → ANY destination, ANY protocol/ports)", ruleNum, policy.Description, policy.Source.CIDR))
+			}
+		}
+
+		// Manufacturing zone specific risks - check by actual zone classification, not interface name
+		if policy.Action == "ALLOW" {
+			// Find the network this rule applies to and check its zone
+			for _, network := range g.model.Networks {
+				if network.ID == policy.Zone || 
+				   (policy.Zone == "lan" && network.ID == "lan") ||
+				   (strings.Contains(policy.Zone, "opt") && network.ID == policy.Zone) {
+					
+					if network.Zone == interfaces.IndustrialZone {
+						if (isAnyDest && isAnyPorts) || (isAnySource && isAnyDest) {
+							manufacturingZoneRisks = append(manufacturingZoneRisks, 
+								fmt.Sprintf("   %s (%s - %s): %s", ruleNum, policy.Zone, network.Zone, policy.Description))
+						}
+					}
+					break
+				}
+			}
+		}
+
+		// DMZ specific risks (opt5 is DMZ)
+		if policy.Zone == "opt5" && policy.Action == "ALLOW" && (isAnyDest || isAnySource) {
+			dmzRisks = append(dmzRisks, fmt.Sprintf("   %s: %s", ruleNum, policy.Description))
+		}
+	}
+
+	if len(anyToAnyRules) > 0 {
+		fmt.Fprintf(w, "❌ ANY-TO-ANY RULES (Highest Risk):\n")
+		for _, rule := range anyToAnyRules {
+			fmt.Fprintf(w, "%s\n", rule)
+		}
+		fmt.Fprintf(w, "   → These rules bypass all network segmentation!\n")
+		fmt.Fprintf(w, "\n")
+	}
+
+	if len(manufacturingZoneRisks) > 0 {
+		fmt.Fprintf(w, "⚠️  INDUSTRIAL ZONE RISKS (High Risk - Critical OT Systems):\n")
+		for _, rule := range manufacturingZoneRisks {
+			fmt.Fprintf(w, "%s\n", rule)
+		}
+		fmt.Fprintf(w, "   → OT networks should have restricted, specific destinations only!\n")
+		fmt.Fprintf(w, "\n")
+	}
+
+	if len(dmzRisks) > 0 {
+		fmt.Fprintf(w, "🌐 DMZ ZONE RISKS (Internet-Exposed Systems):\n")
+		for _, rule := range dmzRisks {
+			fmt.Fprintf(w, "%s\n", rule)
+		}
+		fmt.Fprintf(w, "   → DMZ should have minimal, controlled access patterns!\n")
+		fmt.Fprintf(w, "\n")
+	}
+
+	fmt.Fprintf(w, "🎯 PRIORITY ACTIONS (Fix These First):\n")
+
+	// Generate dynamic priority actions based on actual analysis
+	priorityCount := 1
+	foundIssues := false
+
+	// Analyze each risky rule and generate specific recommendations
+	for _, rule := range anyToAnyRules {
+		foundIssues = true
+		fmt.Fprintf(w, "%d. 🚨 URGENT: %s\n", priorityCount, rule)
+		fmt.Fprintf(w, "   → Replace with specific source/destination networks and required ports only\n")
+		priorityCount++
+	}
+
+	for _, rule := range manufacturingZoneRisks {
+		foundIssues = true
+		fmt.Fprintf(w, "%d. 🚨 URGENT: %s\n", priorityCount, rule)
+		fmt.Fprintf(w, "   → OT networks should only access specific MES/Historian/DNS servers\n")
+		priorityCount++
+	}
+
+	for _, rule := range dmzRisks {
+		foundIssues = true
+		fmt.Fprintf(w, "%d. ⚠️  REVIEW: %s\n", priorityCount, rule)
+		fmt.Fprintf(w, "   → DMZ access should be limited to specific external endpoints\n")
+		priorityCount++
+	}
+
+	// Additional dynamic analysis based on actual policy patterns
+	broadRules := 0
+	goodDenyRules := 0
+	totalAllowRules := 0
+	criticalRisks := 0
+	
+	for _, policy := range g.model.Policies {
+		if policy.ID == "implicit-default-deny" {
+			continue
+		}
+		
+		if policy.Action == "ALLOW" {
+			totalAllowRules++
+			// Check for overly broad rules - be more aggressive in detection
+			if (policy.Source.CIDR == "any" || policy.Source.CIDR == "") && len(policy.Ports) == 0 {
+				broadRules++
+			}
+			// Also flag rules that go to "any" destination with any protocol
+			if (policy.Destination.CIDR == "any" || policy.Destination.CIDR == "") && 
+			   (string(policy.Protocol) == "any" || string(policy.Protocol) == "") && len(policy.Ports) == 0 {
+				criticalRisks++
+			}
+		} else if policy.Action == "DENY" || policy.Action == "BLOCK" {
+			goodDenyRules++
+		}
+	}
+
+	// Generate recommendations based on rule patterns - be more critical
+	if criticalRisks > 0 && !foundIssues {
+		fmt.Fprintf(w, "%d. 🚨 CRITICAL: Found %d rules allowing ANY destination with ANY protocol!\n", priorityCount, criticalRisks)
+		fmt.Fprintf(w, "   → These rules completely bypass network segmentation - immediate fix required!\n")
+		priorityCount++
+		foundIssues = true
+	}
+	
+	if broadRules > 0 && !foundIssues {
+		fmt.Fprintf(w, "%d. ⚠️  REVIEW: Found %d overly permissive ALLOW rules\n", priorityCount, broadRules)
+		fmt.Fprintf(w, "   → Consider adding specific port restrictions and destination limits\n")
+		priorityCount++
+		foundIssues = true
+	}
+	
+	if goodDenyRules > 0 {
+		fmt.Fprintf(w, "%d. ✅ GOOD: Found %d explicit DENY rules - excellent defense in depth!\n", priorityCount, goodDenyRules)
+		fmt.Fprintf(w, "   → Keep these rules and consider adding logging for monitoring\n")
+		priorityCount++
+	}
+	
+	if totalAllowRules < 5 && criticalRisks == 0 && len(anyToAnyRules) == 0 && len(manufacturingZoneRisks) == 0 {
+		fmt.Fprintf(w, "%d. 💡 SUGGESTION: Configuration has %d ALLOW rules - appears well-controlled\n", priorityCount, totalAllowRules)
+		fmt.Fprintf(w, "   → Monitor actual traffic patterns to ensure rules aren't too restrictive\n")
+		priorityCount++
+	}
+	
+	// Only show "no critical violations" if we really found no issues
+	if !foundIssues && goodDenyRules == 0 && totalAllowRules > 0 && criticalRisks == 0 {
+		fmt.Fprintf(w, "✅ No critical rule violations detected in this configuration.\n")
+		fmt.Fprintf(w, "   → Consider adding explicit DENY rules before default deny for better logging\n")
+		fmt.Fprintf(w, "   → Monitor traffic patterns and tighten rules based on actual usage\n")
+	}
+	
+	if totalAllowRules == 0 {
+		fmt.Fprintf(w, "ℹ️  No explicit ALLOW rules found - all traffic blocked by default deny.\n")
+		fmt.Fprintf(w, "   → Add specific ALLOW rules for required business communications\n")
+	}
+
+	fmt.Fprintf(w, "\n")
+
+	fmt.Fprintf(w, "📋 DETAILED SEGMENTATION IMPROVEMENTS:\n")
+
+	// Generate dynamic segmentation improvements based on actual networks found
+	manufacturingZones := []string{}
+	enterpriseZones := []string{}
+	dmzZones := []string{}
+
+	for _, network := range g.model.Networks {
+		switch network.Zone {
+		case interfaces.IndustrialZone:
+			manufacturingZones = append(manufacturingZones, network.ID)
+		case interfaces.EnterpriseZone:
+			enterpriseZones = append(enterpriseZones, network.ID)
+		case interfaces.DMZZone:
+			dmzZones = append(dmzZones, network.ID)
+		}
+	}
+	
+	if len(manufacturingZones) > 0 {
+		fmt.Fprintf(w, "• Industrial Zones (%s): Restrict to specific MES/Historian/DNS servers\n", 
+			strings.Join(manufacturingZones, ","))
+		fmt.Fprintf(w, "  - Implement strict protocol controls (Modbus, OPC-UA, EtherNet/IP only)\n")
+		fmt.Fprintf(w, "  - Block internet access except for specific vendor support tunnels\n")
+	}
+
+	if len(enterpriseZones) > 0 {
+		fmt.Fprintf(w, "• Enterprise Zones (%s): Limit maintenance access to specific bastion/jump hosts\n",
+			strings.Join(enterpriseZones, ","))
+		fmt.Fprintf(w, "  - Implement time-based access controls for maintenance windows\n")
+		fmt.Fprintf(w, "  - Require VPN/2FA for remote administrative access\n")
+	}
+
+	if len(dmzZones) > 0 {
+		fmt.Fprintf(w, "• DMZ Zones (%s): Implement strict egress filtering, specific vendor VPN endpoints\n",
+			strings.Join(dmzZones, ","))
+		fmt.Fprintf(w, "  - Allow only required external services (NTP, vendor support, updates)\n")
+		fmt.Fprintf(w, "  - Block all lateral movement to internal networks\n")
+	}
+
+	// Add recommendations for inter-zone communication
+	if goodDenyRules > 0 {
+		fmt.Fprintf(w, "• Inter-zone Controls: Current DENY rules are excellent - maintain these!\n")
+		fmt.Fprintf(w, "  - Consider adding logging to monitor blocked traffic patterns\n")
+	} else {
+		fmt.Fprintf(w, "• Inter-zone Controls: Consider adding explicit DENY rules between zones\n")
+		fmt.Fprintf(w, "  - Block Industrial → Enterprise communication by default\n")
+		fmt.Fprintf(w, "  - Block DMZ → Internal network communication\n")
+	}
+	fmt.Fprintf(w, "\n")
+
+	fmt.Fprintf(w, "🔍 MONITORING RECOMMENDATIONS:\n")
+
+	// Generate dynamic monitoring recommendations based on actual findings
+	if len(anyToAnyRules) > 0 || len(manufacturingZoneRisks) > 0 {
+		fmt.Fprintf(w, "• Enable detailed logging on risky ALLOW rules to understand traffic patterns\n")
+	}
+
+	if len(manufacturingZones) > 0 {
+		fmt.Fprintf(w, "• Monitor Industrial Zone (%s) outbound connections for anomalies\n", 
+			strings.Join(manufacturingZones, ","))
+		fmt.Fprintf(w, "• Set up alerts for unexpected OT protocol usage or destinations\n")
+	}
+
+	if len(dmzZones) > 0 {
+		fmt.Fprintf(w, "• Monitor DMZ Zone (%s) for suspicious inbound/outbound connections\n",
+			strings.Join(dmzZones, ","))
+	}
+
+	fmt.Fprintf(w, "• Set up alerts for any traffic hitting the implicit default deny rule (∞)\n")
+
+	if totalAllowRules > 10 {
+		fmt.Fprintf(w, "• With %d ALLOW rules, consider rule utilization analysis to remove unused rules\n", totalAllowRules)
+	}
+
+	if goodDenyRules > 0 {
+		fmt.Fprintf(w, "• Monitor DENY rule hits to validate security policies are working\n")
+	}
+
+	fmt.Fprintf(w, "• Implement time-based access controls for maintenance windows\n")
+	fmt.Fprintf(w, "• Regular review of firewall logs for policy violations and anomalies\n")
+	fmt.Fprintf(w, "\n")
+
+	fmt.Fprintf(w, "═══════════════════════════════════════════════════════════════════════════════\n")
+	fmt.Fprintf(w, "End of Firewall Rules Summary\n")
+	fmt.Fprintf(w, "═══════════════════════════════════════════════════════════════════════════════\n")
+
+	return nil
+}
+
 // GenerateIEC62443ZoneDiagram creates an IEC 62443 compliant zone diagram
 func (g *FirewallDiagramGenerator) GenerateIEC62443ZoneDiagram(outputPath string) error {
 	file, err := os.Create(outputPath)
@@ -115,7 +563,7 @@ func (g *FirewallDiagramGenerator) generateZoneClusters(w *bufio.Writer) {
 
 		// Zone-specific styling
 		switch zone {
-		case interfaces.ManufacturingZone:
+		case interfaces.IndustrialZone:
 			fmt.Fprintln(w, "    style=filled;")
 			fmt.Fprintln(w, "    bgcolor=\"#e8f5e8\";")
 			fmt.Fprintln(w, "    color=\"#2e7d32\";")
@@ -224,7 +672,7 @@ func (g *FirewallDiagramGenerator) generateIEC62443Zone(w *bufio.Writer, zone in
 
 	// IEC 62443 zone styling
 	switch zone {
-	case interfaces.ManufacturingZone:
+	case interfaces.IndustrialZone:
 		fmt.Fprintln(w, "    style=\"filled,bold\";")
 		fmt.Fprintln(w, "    bgcolor=\"#c8e6c9\";")
 		fmt.Fprintln(w, "    color=\"#1b5e20\";")
@@ -303,10 +751,10 @@ func (g *FirewallDiagramGenerator) generateIEC62443Legend(w *bufio.Writer) {
 	fmt.Fprintln(w, "    fontsize=12;")
 	fmt.Fprintln(w, "    fontname=\"Arial Bold\";")
 	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "    mfg_zone [label=\"Manufacturing Zone\\n(Level 0-2)\", fillcolor=\"#c8e6c9\", style=\"filled,rounded\", shape=\"box\"];")
-	fmt.Fprintln(w, "    dmz_zone [label=\"DMZ Zone\\n(Network Perimeter)\", fillcolor=\"#ffe0b2\", style=\"filled,rounded\", shape=\"box\"];")
-	fmt.Fprintln(w, "    ent_zone [label=\"Enterprise Zone\\n(Level 3-5)\", fillcolor=\"#e1bee7\", style=\"filled,rounded\", shape=\"box\"];")
-	fmt.Fprintln(w, "    remote_zone [label=\"Remote Access Zone\\n(VPN/Remote)\", fillcolor=\"#b3e5fc\", style=\"filled,rounded\", shape=\"box\"];")
+    fmt.Fprintln(w, "    industrial_zone [label=\"Industrial Zone\\n(Level 0-2)\", fillcolor=\"#c8e6c9\", style=\"filled,rounded\", shape=\"box\"];")
+    fmt.Fprintln(w, "    dmz_zone [label=\"DMZ Zone\\n(Network Perimeter)\", fillcolor=\"#ffe0b2\", style=\"filled,rounded\", shape=\"box\"];")
+    fmt.Fprintln(w, "    ent_zone [label=\"Enterprise Zone\\n(Level 3-5)\", fillcolor=\"#e1bee7\", style=\"filled,rounded\", shape=\"box\"];")
+    fmt.Fprintln(w, "    remote_zone [label=\"Remote Access Zone\\n(VPN/Remote)\", fillcolor=\"#b3e5fc\", style=\"filled,rounded\", shape=\"box\"];")
 	fmt.Fprintln(w, "  }")
 }
 
@@ -465,7 +913,7 @@ func (g *FirewallDiagramGenerator) generateRuleAnnotations(w *bufio.Writer) {
 // getZoneColor returns the fill color for a zone
 func (g *FirewallDiagramGenerator) getZoneColor(zone interfaces.IEC62443Zone) string {
 	switch zone {
-	case interfaces.ManufacturingZone:
+	case interfaces.IndustrialZone:
 		return "#c8e6c9" // Light green
 	case interfaces.DMZZone:
 		return "#ffe0b2" // Light orange
@@ -481,7 +929,7 @@ func (g *FirewallDiagramGenerator) getZoneColor(zone interfaces.IEC62443Zone) st
 // getZoneBorderColor returns the border color for a zone
 func (g *FirewallDiagramGenerator) getZoneBorderColor(zone interfaces.IEC62443Zone) string {
 	switch zone {
-	case interfaces.ManufacturingZone:
+	case interfaces.IndustrialZone:
 		return "#2e7d32" // Dark green
 	case interfaces.DMZZone:
 		return "#f57c00" // Dark orange

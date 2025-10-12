@@ -1,0 +1,91 @@
+═══════════════════════════════════════════════════════════════════════════════
+                            FIREWALL RULES SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+Configuration: /Users/tturner/Documents/config-OPNsense.internal-20251012003119.xml
+Generated: 2025-10-11 20:32:17
+Total Networks: 5 | Total Policies: 3
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 NETWORK SEGMENTS
+───────────────────────────────────────────────────────────────────────────────
+• wan             |                    | DMZ Zone             | Medium       | Internet
+• lan             | 10.30.0.2/24       | Manufacturing Zone   | High         | Corporate IT
+• opt1            | 10.10.0.2/24       | Enterprise Zone      | Low          | Corporate IT
+• opt2            | 10.20.0.2/24       | DMZ Zone             | Medium       | DMZ
+• opt3            | 10.40.0.2/24       | Manufacturing Zone   | High         | Production OT
+
+🔒 SECURITY POLICIES
+───────────────────────────────────────────────────────────────────────────────
+#      | ACTION   | SOURCE               | DESTINATION          | PROTOCOL     | PORTS           | DESCRIPTION
+───────────────────────────────────────────────────────────────────────────────
+1      | ALLOW    | lan                  | any                  | any          | any             | Default allow LAN to any rule
+2      | ALLOW    | lan                  | any                  | any          | any             | Default allow LAN IPv6 to any rule
+∞      | DENY     | any                  | any                  | any          | any             | 🔒 Implicit default deny (built-in OPNse...
+
+⚠️  RISK ASSESSMENT BY ZONE
+───────────────────────────────────────────────────────────────────────────────
+• Manufacturing Zone       : HIGH RISK - Critical OT systems
+  └─ lan (10.30.0.2/24)
+  └─ opt3 (10.40.0.2/24)
+
+• Enterprise Zone          : LOW RISK - IT systems
+  └─ opt1 (10.10.0.2/24)
+
+• DMZ Zone                 : MEDIUM RISK - Internet exposed
+  └─ opt2 (10.20.0.2/24)
+  └─ wan ()
+
+💡 SEGMENTATION RECOMMENDATIONS
+───────────────────────────────────────────────────────────────────────────────
+🔒 IMPLICIT DEFAULT DENY: OPNsense has a built-in default deny rule (∞) that
+   blocks all traffic not explicitly allowed by the rules above. This provides
+   a secure-by-default stance - only explicitly permitted traffic flows.
+
+🚨 CRITICAL SECURITY ISSUES IDENTIFIED:
+
+❌ ANY-TO-ANY RULES (Highest Risk):
+   #1: Default allow LAN to any rule (Source: lan → ANY destination, ANY protocol/ports)
+   #2: Default allow LAN IPv6 to any rule (Source: lan → ANY destination, ANY protocol/ports)
+   → These rules bypass all network segmentation!
+
+⚠️  MANUFACTURING ZONE RISKS (High Risk - Critical OT Systems):
+   #1 (lan - Manufacturing Zone): Default allow LAN to any rule
+   #2 (lan - Manufacturing Zone): Default allow LAN IPv6 to any rule
+   → OT networks should have restricted, specific destinations only!
+
+🎯 PRIORITY ACTIONS (Fix These First):
+1. 🚨 URGENT:    #1: Default allow LAN to any rule (Source: lan → ANY destination, ANY protocol/ports)
+   → Replace with specific source/destination networks and required ports only
+2. 🚨 URGENT:    #2: Default allow LAN IPv6 to any rule (Source: lan → ANY destination, ANY protocol/ports)
+   → Replace with specific source/destination networks and required ports only
+3. 🚨 URGENT:    #1 (lan - Manufacturing Zone): Default allow LAN to any rule
+   → OT networks should only access specific MES/Historian/DNS servers
+4. 🚨 URGENT:    #2 (lan - Manufacturing Zone): Default allow LAN IPv6 to any rule
+   → OT networks should only access specific MES/Historian/DNS servers
+
+📋 DETAILED SEGMENTATION IMPROVEMENTS:
+• Manufacturing Zones (lan,opt3): Restrict to specific MES/Historian/DNS servers
+  - Implement strict protocol controls (Modbus, OPC-UA, EtherNet/IP only)
+  - Block internet access except for specific vendor support tunnels
+• Enterprise Zones (opt1): Limit maintenance access to specific bastion/jump hosts
+  - Implement time-based access controls for maintenance windows
+  - Require VPN/2FA for remote administrative access
+• DMZ Zones (wan,opt2): Implement strict egress filtering, specific vendor VPN endpoints
+  - Allow only required external services (NTP, vendor support, updates)
+  - Block all lateral movement to internal networks
+• Inter-zone Controls: Consider adding explicit DENY rules between zones
+  - Block Manufacturing → Enterprise communication by default
+  - Block DMZ → Internal network communication
+
+🔍 MONITORING RECOMMENDATIONS:
+• Enable detailed logging on risky ALLOW rules to understand traffic patterns
+• Monitor Manufacturing Zone (lan,opt3) outbound connections for anomalies
+• Set up alerts for unexpected OT protocol usage or destinations
+• Monitor DMZ Zone (wan,opt2) for suspicious inbound/outbound connections
+• Set up alerts for any traffic hitting the implicit default deny rule (∞)
+• Implement time-based access controls for maintenance windows
+• Regular review of firewall logs for policy violations and anomalies
+
+═══════════════════════════════════════════════════════════════════════════════
+End of Firewall Rules Summary
+═══════════════════════════════════════════════════════════════════════════════

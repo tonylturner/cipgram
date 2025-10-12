@@ -1,0 +1,147 @@
+digraph FirewallTopology {
+  rankdir=LR;
+  node [fontname="Arial", fontsize=10];
+  edge [fontname="Arial", fontsize=9];
+  bgcolor=white;
+  splines=ortho;
+  nodesep=1.0;
+  ranksep=2.0;
+
+  label="Firewall Network Topology\n./fwconfigs/power_substation_mixed.xml\nGenerated: 2025-10-11 22:00:46";
+  labelloc=t;
+  fontsize=14;
+
+  // Central Firewall
+  firewall [
+    label="🔥 Firewall\n(OPNsense)\n\nInterfaces:";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#e3f2fd";
+    color="#1976d2";
+    penwidth=3;
+    fontsize=12;
+    fontname="Arial Bold";
+  ];
+
+  // Network Segments
+  net_opt3 [
+    label="opt3\n172.16.40.1/24\n(Substation Automation)\n\nZone: Industrial Zone\nRisk: High\nType: Production OT";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#c8e6c9";
+    color="#2e7d32";
+    penwidth=2;
+    fontsize=10;
+  ];
+  net_opt4 [
+    label="opt4\n172.16.50.1/24\n(Engineering Access)\n\nZone: Enterprise Zone\nRisk: Low\nType: General";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#e1bee7";
+    color="#7b1fa2";
+    penwidth=2;
+    fontsize=10;
+  ];
+  net_opt5 [
+    label="opt5\n172.16.60.1/24\n(Historian DMZ)\n\nZone: DMZ Zone\nRisk: Medium\nType: DMZ";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#ffe0b2";
+    color="#f57c00";
+    penwidth=2;
+    fontsize=10;
+  ];
+  net_wan [
+    label="wan\n10.0.1.100/24\n(Utility WAN)\n\nZone: DMZ Zone\nRisk: Medium\nType: Internet";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#ffe0b2";
+    color="#f57c00";
+    penwidth=2;
+    fontsize=10;
+  ];
+  net_lan [
+    label="lan\n172.16.10.1/24\n(Control Center)\n\nZone: Industrial Zone\nRisk: High\nType: Production OT";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#c8e6c9";
+    color="#2e7d32";
+    penwidth=2;
+    fontsize=10;
+  ];
+  net_opt1 [
+    label="opt1\n172.16.20.1/24\n(SCADA Network)\n\nZone: Industrial Zone\nRisk: High\nType: Production OT";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#c8e6c9";
+    color="#2e7d32";
+    penwidth=2;
+    fontsize=10;
+  ];
+  net_opt2 [
+    label="opt2\n172.16.30.1/24\n(Protection Relays)\n\nZone: Industrial Zone\nRisk: High\nType: Production OT";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#c8e6c9";
+    color="#2e7d32";
+    penwidth=2;
+    fontsize=10;
+  ];
+
+  // Firewall to Network Connections
+  firewall -> net_opt5 [
+    label="opt5\n172.16.60.1/24";
+    fontsize=9;
+    color="#666666";
+    penwidth=2;
+  ];
+  firewall -> net_wan [
+    label="wan\n10.0.1.100/24";
+    fontsize=9;
+    color="#666666";
+    penwidth=2;
+  ];
+  firewall -> net_lan [
+    label="lan\n172.16.10.1/24";
+    fontsize=9;
+    color="#666666";
+    penwidth=2;
+  ];
+  firewall -> net_opt1 [
+    label="opt1\n172.16.20.1/24";
+    fontsize=9;
+    color="#666666";
+    penwidth=2;
+  ];
+  firewall -> net_opt2 [
+    label="opt2\n172.16.30.1/24";
+    fontsize=9;
+    color="#666666";
+    penwidth=2;
+  ];
+  firewall -> net_opt3 [
+    label="opt3\n172.16.40.1/24";
+    fontsize=9;
+    color="#666666";
+    penwidth=2;
+  ];
+  firewall -> net_opt4 [
+    label="opt4\n172.16.50.1/24";
+    fontsize=9;
+    color="#666666";
+    penwidth=2;
+  ];
+
+  // Security Rules (as edge labels)
+
+  // Security Rules Summary
+  rules_summary [
+    label="🔒 Security Rules Summary\n\n
+    ALLOW: lan → any\n    ALLOW: lan → any\n    ALLOW: opt1 → any\n    ALLOW: opt1 → opt3\n    ALLOW: any → any\n    ... and 11 more rules";
+    shape=note;
+    style="filled,rounded";
+    fillcolor="#fff9c4";
+    color="#f57f17";
+    fontsize=9;
+  ];
+}

@@ -1,0 +1,313 @@
+<?xml version="1.0"?>
+<opnsense>
+  <system>
+    <hostname>WaterTreatment-FW01</hostname>
+    <domain>watertx.local</domain>
+    <timezone>America/Chicago</timezone>
+    <dnsserver>8.8.8.8</dnsserver>
+    <dnsserver>8.8.4.4</dnsserver>
+  </system>
+
+  <gateways>
+    <gateway_item>
+      <interface>wan</interface>
+      <gateway>dhcp</gateway>
+      <name>WANGW</name>
+      <defaultgw>yes</defaultgw>
+      <descr>WAN Gateway to ISP</descr>
+    </gateway_item>
+  </gateways>
+
+  <interfaces>
+    <wan>
+      <descr>WAN - Internet Connection</descr>
+      <ipaddr>dhcp</ipaddr>
+    </wan>
+    <lan>
+      <descr>Corporate Network</descr>
+      <ipaddr>192.168.10.1</ipaddr>
+      <subnet>24</subnet>
+    </lan>
+    <opt1>
+      <descr>SCADA Network - Level 2 Control</descr>
+      <ipaddr>10.100.1.1</ipaddr>
+      <subnet>24</subnet>
+    </opt1>
+    <opt2>
+      <descr>HMI Network - Level 1 Operations</descr>
+      <ipaddr>10.100.2.1</ipaddr>
+      <subnet>24</subnet>
+    </opt2>
+    <opt3>
+      <descr>Field Devices - Level 0 I/O</descr>
+      <ipaddr>10.100.3.1</ipaddr>
+      <subnet>24</subnet>
+    </opt3>
+    <opt4>
+      <descr>Historian DMZ</descr>
+      <ipaddr>10.200.1.1</ipaddr>
+      <subnet>24</subnet>
+    </opt4>
+    <opt5>
+      <descr>Remote Access VPN</descr>
+      <ipaddr>10.50.1.1</ipaddr>
+      <subnet>24</subnet>
+    </opt5>
+  </interfaces>
+
+  <aliases>
+    <alias>
+      <name>CORP_NETWORK</name>
+      <type>network</type>
+      <address>192.168.10.0/24</address>
+      <descr>Corporate office network</descr>
+    </alias>
+    <alias>
+      <name>SCADA_SERVERS</name>
+      <type>host</type>
+      <address>10.100.1.10,10.100.1.11</address>
+      <descr>Primary and backup SCADA servers</descr>
+    </alias>
+    <alias>
+      <name>HISTORIAN_SERVER</name>
+      <type>host</type>
+      <address>10.200.1.10</address>
+      <descr>Process historian server</descr>
+    </alias>
+    <alias>
+      <name>OT_MGMT_PORTS</name>
+      <type>port</type>
+      <address>22,502,102,44818,1883</address>
+      <descr>SSH,Modbus,S7,CIP,MQTT</descr>
+    </alias>
+    <alias>
+      <name>WEB_PORTS</name>
+      <type>port</type>
+      <address>80,443,8080</address>
+      <descr>HTTP/HTTPS/Alt-HTTP</descr>
+    </alias>
+  </aliases>
+
+  <filter>
+    <!-- Corporate Network Rules -->
+    <rule>
+      <type>pass</type>
+      <interface>lan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>lan</network>
+      </source>
+      <destination>
+        <address>HISTORIAN_SERVER</address>
+      </destination>
+      <dstport>WEB_PORTS</dstport>
+      <descr>Corporate access to historian web interface</descr>
+    </rule>
+
+    <!-- SCADA Network Rules (Level 2) -->
+    <rule>
+      <type>pass</type>
+      <interface>opt1</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt1</network>
+      </source>
+      <destination>
+        <network>opt2</network>
+      </destination>
+      <dstport>OT_MGMT_PORTS</dstport>
+      <descr>SCADA to HMI communication</descr>
+    </rule>
+
+    <rule>
+      <type>pass</type>
+      <interface>opt1</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt1</network>
+      </source>
+      <destination>
+        <network>opt3</network>
+      </destination>
+      <dstport>502</dstport>
+      <descr>SCADA to field devices (Modbus)</descr>
+    </rule>
+
+    <rule>
+      <type>pass</type>
+      <interface>opt1</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt1</network>
+      </source>
+      <destination>
+        <address>HISTORIAN_SERVER</address>
+      </destination>
+      <dstport>1433</dstport>
+      <descr>SCADA to historian (SQL Server)</descr>
+    </rule>
+
+    <!-- HMI Network Rules (Level 1) -->
+    <rule>
+      <type>pass</type>
+      <interface>opt2</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt2</network>
+      </source>
+      <destination>
+        <address>SCADA_SERVERS</address>
+      </destination>
+      <dstport>OT_MGMT_PORTS</dstport>
+      <descr>HMI to SCADA servers</descr>
+    </rule>
+
+    <!-- Field Devices (Level 0) - Highly Restricted -->
+    <rule>
+      <type>pass</type>
+      <interface>opt3</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt3</network>
+      </source>
+      <destination>
+        <address>SCADA_SERVERS</address>
+      </destination>
+      <dstport>502</dstport>
+      <descr>Field devices to SCADA (Modbus only)</descr>
+    </rule>
+
+    <!-- Historian DMZ Rules -->
+    <rule>
+      <type>pass</type>
+      <interface>opt4</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <address>HISTORIAN_SERVER</address>
+      </source>
+      <destination>
+        <network>lan</network>
+      </destination>
+      <dstport>WEB_PORTS</dstport>
+      <descr>Historian web services to corporate</descr>
+    </rule>
+
+    <!-- Remote Access Rules - Strict -->
+    <rule>
+      <type>pass</type>
+      <interface>opt5</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt5</network>
+      </source>
+      <destination>
+        <address>HISTORIAN_SERVER</address>
+      </destination>
+      <dstport>443</dstport>
+      <descr>VPN users to historian (HTTPS only)</descr>
+    </rule>
+
+    <!-- Security Deny Rules -->
+    <rule>
+      <type>block</type>
+      <interface>opt3</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <network>opt3</network>
+      </source>
+      <destination>
+        <network>lan</network>
+      </destination>
+      <descr>Block field devices from corporate network</descr>
+    </rule>
+
+    <rule>
+      <type>block</type>
+      <interface>opt3</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <network>opt3</network>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <descr>Block field devices from internet</descr>
+    </rule>
+
+    <rule>
+      <type>block</type>
+      <interface>wan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <any></any>
+      </source>
+      <destination>
+        <network>opt1</network>
+      </destination>
+      <descr>Block internet access to SCADA network</descr>
+    </rule>
+
+    <rule>
+      <type>block</type>
+      <interface>wan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <any></any>
+      </source>
+      <destination>
+        <network>opt2</network>
+      </destination>
+      <descr>Block internet access to HMI network</descr>
+    </rule>
+
+    <rule>
+      <type>block</type>
+      <interface>wan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <any></any>
+      </source>
+      <destination>
+        <network>opt3</network>
+      </destination>
+      <descr>Block internet access to field devices</descr>
+    </rule>
+  </filter>
+
+  <descriptive_note>
+    <![CDATA[
+    Water Treatment Plant OPNsense Configuration
+    
+    Network Architecture:
+    - Corporate Network (192.168.10.0/24): Office users, engineering workstations
+    - SCADA Network (10.100.1.0/24): Level 2 - Supervisory control systems
+    - HMI Network (10.100.2.0/24): Level 1 - Human-machine interfaces
+    - Field Devices (10.100.3.0/24): Level 0 - PLCs, sensors, actuators
+    - Historian DMZ (10.200.1.0/24): Data historian and reporting
+    - Remote Access (10.50.1.0/24): VPN users
+    
+    Security Features:
+    - Strict Purdue Model implementation (L0, L1, L2 separation)
+    - Field devices isolated from corporate network
+    - Internet access blocked to all OT networks
+    - Protocol-specific rules (Modbus, S7, CIP)
+    - Historian in DMZ for safe corporate access
+    - Explicit deny rules for defense in depth
+    
+    This is a well-secured water treatment facility configuration.
+    ]]>
+  </descriptive_note>
+</opnsense>

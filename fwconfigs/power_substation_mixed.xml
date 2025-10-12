@@ -1,0 +1,373 @@
+<?xml version="1.0"?>
+<opnsense>
+  <system>
+    <hostname>Substation-Alpha</hostname>
+    <domain>power.utility.com</domain>
+    <timezone>America/Denver</timezone>
+    <dnsserver>10.1.1.10</dnsserver>
+    <dnsserver>10.1.1.11</dnsserver>
+  </system>
+
+  <gateways>
+    <gateway_item>
+      <interface>wan</interface>
+      <gateway>10.0.1.1</gateway>
+      <name>UTILITY_WAN</name>
+      <defaultgw>yes</defaultgw>
+      <descr>Utility WAN Connection</descr>
+    </gateway_item>
+  </gateways>
+
+  <interfaces>
+    <wan>
+      <descr>Utility WAN</descr>
+      <ipaddr>10.0.1.100</ipaddr>
+      <subnet>24</subnet>
+    </wan>
+    <lan>
+      <descr>Control Center</descr>
+      <ipaddr>172.16.10.1</ipaddr>
+      <subnet>24</subnet>
+    </lan>
+    <opt1>
+      <descr>SCADA Network</descr>
+      <ipaddr>172.16.20.1</ipaddr>
+      <subnet>24</subnet>
+    </opt1>
+    <opt2>
+      <descr>Protection Relays</descr>
+      <ipaddr>172.16.30.1</ipaddr>
+      <subnet>24</subnet>
+    </opt2>
+    <opt3>
+      <descr>Substation Automation</descr>
+      <ipaddr>172.16.40.1</ipaddr>
+      <subnet>24</subnet>
+    </opt3>
+    <opt4>
+      <descr>Engineering Access</descr>
+      <ipaddr>172.16.50.1</ipaddr>
+      <subnet>24</subnet>
+    </opt4>
+    <opt5>
+      <descr>Historian DMZ</descr>
+      <ipaddr>172.16.60.1</ipaddr>
+      <subnet>24</subnet>
+    </opt5>
+  </interfaces>
+
+  <aliases>
+    <alias>
+      <name>CONTROL_CENTER</name>
+      <type>network</type>
+      <address>172.16.10.0/24</address>
+      <descr>Main control center network</descr>
+    </alias>
+    <alias>
+      <name>SCADA_SERVERS</name>
+      <type>host</type>
+      <address>172.16.20.10,172.16.20.11,172.16.20.12</address>
+      <descr>Primary, backup, and development SCADA</descr>
+    </alias>
+    <alias>
+      <name>PROTECTION_DEVICES</name>
+      <type>network</type>
+      <address>172.16.30.0/24</address>
+      <descr>Protection relays and meters</descr>
+    </alias>
+    <alias>
+      <name>HISTORIAN_SERVER</name>
+      <type>host</type>
+      <address>172.16.60.10</address>
+      <descr>Power system historian</descr>
+    </alias>
+    <alias>
+      <name>UTILITY_MGMT</name>
+      <type>host</type>
+      <address>10.1.1.50,10.1.1.51</address>
+      <descr>Utility management servers</descr>
+    </alias>
+    <alias>
+      <name>IEC61850_PORTS</name>
+      <type>port</type>
+      <address>102,2404</address>
+      <descr>IEC 61850 MMS and GOOSE</descr>
+    </alias>
+    <alias>
+      <name>DNP3_MODBUS_PORTS</name>
+      <type>port</type>
+      <address>20000,502</address>
+      <descr>DNP3 and Modbus protocols</descr>
+    </alias>
+    <alias>
+      <name>SECURE_MGMT_PORTS</name>
+      <type>port</type>
+      <address>22,443,993,995</address>
+      <descr>SSH, HTTPS, IMAPS, POP3S</descr>
+    </alias>
+  </aliases>
+
+  <filter>
+    <!-- Control Center Rules - Good -->
+    <rule>
+      <type>pass</type>
+      <interface>lan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>lan</network>
+      </source>
+      <destination>
+        <address>SCADA_SERVERS</address>
+      </destination>
+      <dstport>SECURE_MGMT_PORTS</dstport>
+      <descr>Control center to SCADA (secure protocols only)</descr>
+    </rule>
+
+    <rule>
+      <type>pass</type>
+      <interface>lan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>lan</network>
+      </source>
+      <destination>
+        <address>HISTORIAN_SERVER</address>
+      </destination>
+      <dstport>443,1433</dstport>
+      <descr>Control center to historian (HTTPS and SQL)</descr>
+    </rule>
+
+    <!-- SCADA Network Rules - Mixed Security -->
+    <rule>
+      <type>pass</type>
+      <interface>opt1</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt1</network>
+      </source>
+      <destination>
+        <address>PROTECTION_DEVICES</address>
+      </destination>
+      <dstport>IEC61850_PORTS</dstport>
+      <descr>SCADA to protection relays (IEC 61850)</descr>
+    </rule>
+
+    <rule>
+      <type>pass</type>
+      <interface>opt1</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt1</network>
+      </source>
+      <destination>
+        <network>opt3</network>
+      </destination>
+      <dstport>DNP3_MODBUS_PORTS</dstport>
+      <descr>SCADA to substation automation</descr>
+    </rule>
+
+    <!-- PROBLEM: SCADA has internet access for updates -->
+    <rule>
+      <type>pass</type>
+      <interface>opt1</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <address>SCADA_SERVERS</address>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <dstport>80,443</dstport>
+      <descr>SCADA servers internet access (RISKY!)</descr>
+    </rule>
+
+    <!-- Protection Relays - Good Security -->
+    <rule>
+      <type>pass</type>
+      <interface>opt2</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt2</network>
+      </source>
+      <destination>
+        <address>SCADA_SERVERS</address>
+      </destination>
+      <dstport>IEC61850_PORTS</dstport>
+      <descr>Protection relays to SCADA (IEC 61850 only)</descr>
+    </rule>
+
+    <!-- Substation Automation - Reasonable -->
+    <rule>
+      <type>pass</type>
+      <interface>opt3</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt3</network>
+      </source>
+      <destination>
+        <address>SCADA_SERVERS</address>
+      </destination>
+      <dstport>DNP3_MODBUS_PORTS</dstport>
+      <descr>Substation automation to SCADA</descr>
+    </rule>
+
+    <!-- PROBLEM: Engineering has broad access -->
+    <rule>
+      <type>pass</type>
+      <interface>opt4</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt4</network>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <dstport>22,23,80,443,502,20000</dstport>
+      <descr>Engineering access (includes insecure Telnet!)</descr>
+    </rule>
+
+    <!-- Historian DMZ - Good -->
+    <rule>
+      <type>pass</type>
+      <interface>opt5</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <address>HISTORIAN_SERVER</address>
+      </source>
+      <destination>
+        <address>UTILITY_MGMT</address>
+      </destination>
+      <dstport>443</dstport>
+      <descr>Historian to utility management (HTTPS)</descr>
+    </rule>
+
+    <!-- Utility WAN Rules -->
+    <rule>
+      <type>pass</type>
+      <interface>wan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <address>UTILITY_MGMT</address>
+      </source>
+      <destination>
+        <address>HISTORIAN_SERVER</address>
+      </destination>
+      <dstport>443</dstport>
+      <descr>Utility management to historian</descr>
+    </rule>
+
+    <!-- PROBLEM: Emergency vendor access -->
+    <rule>
+      <type>pass</type>
+      <interface>wan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <any></any>
+      </source>
+      <destination>
+        <network>opt4</network>
+      </destination>
+      <dstport>22</dstport>
+      <descr>Emergency vendor SSH access (should be VPN!)</descr>
+    </rule>
+
+    <!-- Good Security Rules -->
+    <rule>
+      <type>block</type>
+      <interface>wan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <any></any>
+      </source>
+      <destination>
+        <network>opt1</network>
+      </destination>
+      <descr>Block internet access to SCADA network</descr>
+    </rule>
+
+    <rule>
+      <type>block</type>
+      <interface>wan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <any></any>
+      </source>
+      <destination>
+        <network>opt2</network>
+      </destination>
+      <descr>Block internet access to protection relays</descr>
+    </rule>
+
+    <rule>
+      <type>block</type>
+      <interface>opt2</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <network>opt2</network>
+      </source>
+      <destination>
+        <network>lan</network>
+      </destination>
+      <descr>Block protection relays from control center</descr>
+    </rule>
+
+    <rule>
+      <type>block</type>
+      <interface>opt3</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <network>opt3</network>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <descr>Block substation automation internet access</descr>
+    </rule>
+  </filter>
+
+  <descriptive_note>
+    <![CDATA[
+    Power Substation OPNsense Configuration - Mixed Security Profile
+    
+    Network Architecture:
+    - Control Center (172.16.10.0/24): HMI workstations, operator consoles
+    - SCADA Network (172.16.20.0/24): Primary/backup SCADA servers
+    - Protection Relays (172.16.30.0/24): Protective relaying equipment
+    - Substation Automation (172.16.40.0/24): RTUs, intelligent devices
+    - Engineering Access (172.16.50.0/24): Engineering workstations
+    - Historian DMZ (172.16.60.0/24): Data historian and reporting
+    
+    Security Assessment:
+    GOOD PRACTICES:
+    - Protection relays properly isolated
+    - IEC 61850 protocol restrictions
+    - Historian in DMZ
+    - Some explicit deny rules
+    - Secure protocols for critical communications
+    
+    SECURITY CONCERNS:
+    - SCADA servers have internet access (update risk)
+    - Engineering network has overly broad access
+    - Uses insecure Telnet protocol (port 23)
+    - Emergency vendor access bypasses VPN
+    
+    This represents a typical utility configuration with some good practices
+    but also common security gaps that need addressing.
+    ]]>
+  </descriptive_note>
+</opnsense>

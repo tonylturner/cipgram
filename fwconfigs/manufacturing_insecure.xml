@@ -1,0 +1,218 @@
+<?xml version="1.0"?>
+<opnsense>
+  <system>
+    <hostname>PlasticsMfg-FW</hostname>
+    <domain>plastics.local</domain>
+    <timezone>America/New_York</timezone>
+    <dnsserver>192.168.1.1</dnsserver>
+  </system>
+
+  <gateways>
+    <gateway_item>
+      <interface>wan</interface>
+      <gateway>dhcp</gateway>
+      <name>INTERNET_GW</name>
+      <defaultgw>yes</defaultgw>
+      <descr>Internet Gateway</descr>
+    </gateway_item>
+  </gateways>
+
+  <interfaces>
+    <wan>
+      <descr>Internet</descr>
+      <ipaddr>dhcp</ipaddr>
+    </wan>
+    <lan>
+      <descr>Main Network</descr>
+      <ipaddr>192.168.1.1</ipaddr>
+      <subnet>24</subnet>
+    </lan>
+    <opt1>
+      <descr>Production Line A</descr>
+      <ipaddr>192.168.2.1</ipaddr>
+      <subnet>24</subnet>
+    </opt1>
+    <opt2>
+      <descr>Production Line B</descr>
+      <ipaddr>192.168.3.1</ipaddr>
+      <subnet>24</subnet>
+    </opt2>
+    <opt3>
+      <descr>Quality Control</descr>
+      <ipaddr>192.168.4.1</ipaddr>
+      <subnet>24</subnet>
+    </opt3>
+    <opt4>
+      <descr>Maintenance</descr>
+      <ipaddr>192.168.5.1</ipaddr>
+      <subnet>24</subnet>
+    </opt4>
+  </interfaces>
+
+  <aliases>
+    <alias>
+      <name>ALL_PRODUCTION</name>
+      <type>network</type>
+      <address>192.168.2.0/24,192.168.3.0/24</address>
+      <descr>All production networks</descr>
+    </alias>
+    <alias>
+      <name>OFFICE_USERS</name>
+      <type>network</type>
+      <address>192.168.1.0/24</address>
+      <descr>Office and admin users</descr>
+    </alias>
+  </aliases>
+
+  <filter>
+    <!-- DANGEROUS: Allow all LAN traffic anywhere -->
+    <rule>
+      <type>pass</type>
+      <interface>lan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <network>lan</network>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <descr>Allow LAN to anywhere (INSECURE!)</descr>
+    </rule>
+
+    <!-- DANGEROUS: Production Line A has internet access -->
+    <rule>
+      <type>pass</type>
+      <interface>opt1</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt1</network>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <dstport>80,443</dstport>
+      <descr>Production Line A internet access (BAD IDEA!)</descr>
+    </rule>
+
+    <!-- DANGEROUS: Production Line B can talk to everything -->
+    <rule>
+      <type>pass</type>
+      <interface>opt2</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <network>opt2</network>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <descr>Production Line B full access (VERY INSECURE!)</descr>
+    </rule>
+
+    <!-- DANGEROUS: Quality Control can access production -->
+    <rule>
+      <type>pass</type>
+      <interface>opt3</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <network>opt3</network>
+      </source>
+      <destination>
+        <address>ALL_PRODUCTION</address>
+      </destination>
+      <descr>QC to production (no port restrictions!)</descr>
+    </rule>
+
+    <!-- DANGEROUS: Maintenance has admin access everywhere -->
+    <rule>
+      <type>pass</type>
+      <interface>opt4</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt4</network>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <dstport>22,23,80,443,3389</dstport>
+      <descr>Maintenance admin access (includes Telnet!)</descr>
+    </rule>
+
+    <!-- DANGEROUS: Allow any source to maintenance network -->
+    <rule>
+      <type>pass</type>
+      <interface>opt4</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <any></any>
+      </source>
+      <destination>
+        <network>opt4</network>
+      </destination>
+      <descr>Anyone can access maintenance network (NIGHTMARE!)</descr>
+    </rule>
+
+    <!-- DANGEROUS: Vendor remote access (no restrictions) -->
+    <rule>
+      <type>pass</type>
+      <interface>wan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <any></any>
+      </source>
+      <destination>
+        <address>ALL_PRODUCTION</address>
+      </destination>
+      <dstport>22,23,502,44818</dstport>
+      <descr>Vendor remote access from internet (CRITICAL RISK!)</descr>
+    </rule>
+
+    <!-- The ONLY good rule in this config -->
+    <rule>
+      <type>block</type>
+      <interface>wan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <any></any>
+      </source>
+      <destination>
+        <network>lan</network>
+      </destination>
+      <dstport>445</dstport>
+      <descr>Block SMB from internet (at least something!)</descr>
+    </rule>
+  </filter>
+
+  <descriptive_note>
+    <![CDATA[
+    Plastics Manufacturing Plant - INSECURE Configuration Example
+    
+    Network Layout:
+    - Main Network (192.168.1.0/24): Office, admin, engineering
+    - Production Line A (192.168.2.0/24): Injection molding machines
+    - Production Line B (192.168.3.0/24): Assembly and packaging
+    - Quality Control (192.168.4.0/24): Testing equipment
+    - Maintenance (192.168.5.0/24): Maintenance laptops and tools
+    
+    CRITICAL SECURITY ISSUES:
+    - LAN has unrestricted access to anywhere (including internet!)
+    - Production networks have internet access (malware risk!)
+    - Production Line B can access ANY destination with ANY protocol
+    - Maintenance network allows access from ANY source
+    - Vendor remote access directly from internet to production
+    - Uses insecure Telnet protocol (port 23)
+    - No network segmentation between zones
+    - Quality Control has unrestricted access to production
+    
+    This configuration represents EVERYTHING YOU SHOULD NOT DO in OT security!
+    Perfect for training exercises to identify security violations.
+    ]]>
+  </descriptive_note>
+</opnsense>

@@ -1,0 +1,563 @@
+<?xml version="1.0" encoding="utf-8"?>
+<opnsense>
+  <version>24.7</version>
+  <system>
+    <hostname>opnsense-paintshop</hostname>
+    <domain>localdomain</domain>
+    <timezone>America/New_York</timezone>
+    <dnsserver>1.1.1.1</dnsserver>
+    <dnsserver>8.8.8.8</dnsserver>
+    <optimization>normal</optimization>
+    <hostnamectl>OPNsense Automotive Paint &amp; Body Shop</hostnamectl>
+  </system>
+
+  <!-- === Interface Assignments ===
+       Adjust physical interface names (igbX / emX / ixX) to match your hardware.
+       LAN = Corporate
+       OPT1 = OT SMZ
+       OPT2 = Manufacturing Assembly
+       OPT3 = Paint Shop
+       OPT4 = Maintenance
+       OPT5 = DMZ (zzbotz)
+  -->
+  <interfaces>
+    <wan>
+      <if>igb0</if>
+      <descr>WAN</descr>
+      <ipaddr>dhcp</ipaddr>
+      <blockpriv>1</blockpriv>
+      <blockbogons>1</blockbogons>
+    </wan>
+
+    <lan>
+      <if>igb1</if>
+      <descr>LAN_CORPORATE</descr>
+      <ipaddr>10.10.0.1</ipaddr>
+      <subnet>24</subnet>
+    </lan>
+
+    <opt1>
+      <if>igb2</if>
+      <descr>OT_SMZ</descr>
+      <ipaddr>10.20.0.1</ipaddr>
+      <subnet>24</subnet>
+      <enable>1</enable>
+    </opt1>
+
+    <opt2>
+      <if>igb3</if>
+      <descr>MANUFACTURING_ASSEMBLY</descr>
+      <ipaddr>10.30.0.1</ipaddr>
+      <subnet>24</subnet>
+      <enable>1</enable>
+    </opt2>
+
+    <opt3>
+      <if>igb4</if>
+      <descr>PAINT_SHOP</descr>
+      <ipaddr>10.40.0.1</ipaddr>
+      <subnet>24</subnet>
+      <enable>1</enable>
+    </opt3>
+
+    <opt4>
+      <if>igb5</if>
+      <descr>MAINTENANCE</descr>
+      <ipaddr>10.50.0.1</ipaddr>
+      <subnet>24</subnet>
+      <enable>1</enable>
+    </opt4>
+
+    <opt5>
+      <if>igb6</if>
+      <descr>DMZ_ZZBOTZ</descr>
+      <ipaddr>10.60.0.1</ipaddr>
+      <subnet>24</subnet>
+      <enable>1</enable>
+    </opt5>
+  </interfaces>
+
+  <!-- === Gateways (example; adjust or remove static) === -->
+  <gateways>
+    <gateway_item>
+      <interface>wan</interface>
+      <gateway>dhcp</gateway>
+      <name>WANGW</name>
+      <defaultgw>yes</defaultgw>
+      <descr>WAN DHCP Gateway</descr>
+    </gateway_item>
+  </gateways>
+
+  <!-- === Aliases for Subnets, Hosts, and Ports === -->
+  <aliases>
+    <alias>
+      <name>CORP_NET</name>
+      <type>network</type>
+      <address>10.10.0.0/24</address>
+      <descr>Corporate LAN</descr>
+    </alias>
+    <alias>
+      <name>OT_SMZ_NET</name>
+      <type>network</type>
+      <address>10.20.0.0/24</address>
+      <descr>Secure Management Zone</descr>
+    </alias>
+    <alias>
+      <name>ASSEMBLY_NET</name>
+      <type>network</type>
+      <address>10.30.0.0/24</address>
+      <descr>Manufacturing Assembly</descr>
+    </alias>
+    <alias>
+      <name>PAINT_NET</name>
+      <type>network</type>
+      <address>10.40.0.0/24</address>
+      <descr>Paint Shop Network</descr>
+    </alias>
+    <alias>
+      <name>MAINT_NET</name>
+      <type>network</type>
+      <address>10.50.0.0/24</address>
+      <descr>Maintenance Zone</descr>
+    </alias>
+    <alias>
+      <name>ZZBOTZ_DMZ_NET</name>
+      <type>network</type>
+      <address>10.60.0.0/24</address>
+      <descr>Vendor DMZ for zzbotz robotics</descr>
+    </alias>
+    <alias>
+      <name>SMZ_BASTION</name>
+      <type>host</type>
+      <address>10.20.0.10</address>
+      <descr>Jump server in SMZ</descr>
+    </alias>
+    <alias>
+      <name>HISTORIAN</name>
+      <type>host</type>
+      <address>10.20.0.20</address>
+      <descr>OT Historian (e.g., InfluxDB)</descr>
+    </alias>
+    <alias>
+      <name>MES_APP</name>
+      <type>host</type>
+      <address>10.10.0.50</address>
+      <descr>Corporate MES application endpoint</descr>
+    </alias>
+    <alias>
+      <name>OT_DNS_NTP</name>
+      <type>host</type>
+      <address>10.20.0.30</address>
+      <descr>OT DNS/NTP in SMZ</descr>
+    </alias>
+    <alias>
+      <name>OT_MGMT_PORTS</name>
+      <type>port</type>
+      <address>22,3389,443,161,502,2222</address>
+      <descr>Mgmt ports (SSH,RDP,HTTPS,SNMP,Modbus,AltSSH)</descr>
+    </alias>
+    <alias>
+      <name>OT_SERVICES_PORTS</name>
+      <type>port</type>
+      <address>80,443,1883,8883,4840,102,44818,8086</address>
+      <descr>HTTP/HTTPS,MQTT/MQTTS,OPC UA,S7,CIP,InfluxDB</descr>
+    </alias>
+    <alias>
+      <name>VENDOR_VPN_PORTS</name>
+      <type>port</type>
+      <address>443,1194,500,4500</address>
+      <descr>HTTPS/OpenVPN/IPsec IKE/ESP</descr>
+    </alias>
+    <alias>
+      <name>ROBOT_CTRLS</name>
+      <type>host</type>
+      <address>10.60.0.10,10.60.0.11</address>
+      <descr>zzbotz robot controllers in DMZ</descr>
+    </alias>
+  </aliases>
+
+  <!-- === NAT (example: hybrid / automatic outbound) === -->
+  <nat>
+    <outbound>
+      <mode>automatic</mode>
+    </outbound>
+  </nat>
+
+  <!-- === Firewall Rules ===
+       Default deny is enforced by last implicit rule. We add specific allows.
+  -->
+  <filter>
+    <!-- LAN (Corporate) -->
+    <rule>
+      <type>pass</type>
+      <interface>lan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp/udp</protocol>
+      <source>
+        <network>lan</network>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <descr>Allow Corporate LAN to any (tighten as needed)</descr>
+    </rule>
+
+    <!-- OT_SMZ -->
+    <rule>
+      <type>pass</type>
+      <interface>opt1</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp/udp</protocol>
+      <source>
+        <network>opt1</network>
+      </source>
+      <destination>
+        <address>ASSEMBLY_NET,PAINT_NET,MAINT_NET</address>
+      </destination>
+      <dstport>OT_MGMT_PORTS</dstport>
+      <descr>SMZ mgmt to OT zones on mgmt ports only</descr>
+    </rule>
+    <rule>
+      <type>pass</type>
+      <interface>opt1</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt1</network>
+      </source>
+      <destination>
+        <address>ROBOT_CTRLS</address>
+      </destination>
+      <dstport>443</dstport>
+      <descr>SMZ access to zzbotz controllers (HTTPS)</descr>
+    </rule>
+
+    <!-- ASSEMBLY -->
+    <rule>
+      <type>pass</type>
+      <interface>opt2</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt2</network>
+      </source>
+      <destination>
+        <address>HISTORIAN</address>
+      </destination>
+      <dstport>8086</dstport>
+      <descr>Assembly to Historian (InfluxDB)</descr>
+    </rule>
+    <rule>
+      <type>pass</type>
+      <interface>opt2</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>udp</protocol>
+      <source>
+        <network>opt2</network>
+      </source>
+      <destination>
+        <address>OT_DNS_NTP</address>
+      </destination>
+      <dstport>53</dstport>
+      <descr>Assembly to OT DNS</descr>
+    </rule>
+    <rule>
+      <type>pass</type>
+      <interface>opt2</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>udp</protocol>
+      <source>
+        <network>opt2</network>
+      </source>
+      <destination>
+        <address>OT_DNS_NTP</address>
+      </destination>
+      <dstport>123</dstport>
+      <descr>Assembly to OT NTP</descr>
+    </rule>
+
+    <!-- PAINT SHOP -->
+    <rule>
+      <type>pass</type>
+      <interface>opt3</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt3</network>
+      </source>
+      <destination>
+        <address>HISTORIAN</address>
+      </destination>
+      <dstport>8086</dstport>
+      <descr>Paint Shop to Historian (InfluxDB)</descr>
+    </rule>
+    <rule>
+      <type>pass</type>
+      <interface>opt3</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp/udp</protocol>
+      <source>
+        <network>opt3</network>
+      </source>
+      <destination>
+        <address>MES_APP</address>
+      </destination>
+      <dstport>443</dstport>
+      <descr>Paint Shop to MES over HTTPS</descr>
+    </rule>
+
+    <!-- MAINTENANCE -->
+    <rule>
+      <type>pass</type>
+      <interface>opt4</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt4</network>
+      </source>
+      <destination>
+        <address>SMZ_BASTION</address>
+      </destination>
+      <dstport>22,3389</dstport>
+      <descr>Maintenance to SMZ Bastion (SSH/RDP)</descr>
+    </rule>
+
+    <!-- DMZ_ZZBOTZ -->
+    <rule>
+      <type>pass</type>
+      <interface>opt5</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp/udp</protocol>
+      <source>
+        <network>opt5</network>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <dstport>VENDOR_VPN_PORTS</dstport>
+      <descr>DMZ to Internet vendor VPN ports only</descr>
+    </rule>
+    <rule>
+      <type>pass</type>
+      <interface>opt5</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <address>OT_SMZ_NET</address>
+      </source>
+      <destination>
+        <address>ROBOT_CTRLS</address>
+      </destination>
+      <dstport>443</dstport>
+      <descr>Allow SMZ to DMZ robot controllers (HTTPS)</descr>
+    </rule>
+    <rule>
+      <type>block</type>
+      <interface>opt5</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <network>opt5</network>
+      </source>
+      <destination>
+        <address>CORP_NET,ASSEMBLY_NET,PAINT_NET,MAINT_NET,OT_SMZ_NET</address>
+      </destination>
+      <descr>Block DMZ to internal zones (deny-by-default)</descr>
+    </rule>
+
+    <!-- Inter-zone blocks (defense in depth) -->
+    <rule>
+      <type>block</type>
+      <interface>opt2</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <network>opt2</network>
+      </source>
+      <destination>
+        <address>PAINT_NET,MAINT_NET,ZZBOTZ_DMZ_NET</address>
+      </destination>
+      <descr>Block Assembly lateral movement</descr>
+    </rule>
+    <rule>
+      <type>block</type>
+      <interface>opt3</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <network>opt3</network>
+      </source>
+      <destination>
+        <address>ASSEMBLY_NET,MAINT_NET,ZZBOTZ_DMZ_NET</address>
+      </destination>
+      <descr>Block Paint Shop lateral movement</descr>
+    </rule>
+    <rule>
+      <type>block</type>
+      <interface>opt4</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <network>opt4</network>
+      </source>
+      <destination>
+        <address>ASSEMBLY_NET,PAINT_NET,ZZBOTZ_DMZ_NET</address>
+      </destination>
+      <descr>Block Maintenance lateral movement (except via bastion)</descr>
+    </rule>
+
+    <!-- === TESTING RULES - Simple weak rules for testing === -->
+    <rule>
+      <type>pass</type>
+      <interface>lan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp/udp</protocol>
+      <source>
+        <any></any>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <descr>Corporate LAN - allow any to any (WEAK RULE)</descr>
+    </rule>
+
+    <rule>
+      <type>pass</type>
+      <interface>opt2</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>any</protocol>
+      <source>
+        <network>opt2</network>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <descr>Assembly line - any protocol to anywhere</descr>
+    </rule>
+
+    <rule>
+      <type>pass</type>
+      <interface>opt3</interface>
+      <ipprotocol>inet</ipprotocol>
+      <source>
+        <any></any>
+      </source>
+      <destination>
+        <network>opt3</network>
+      </destination>
+      <descr>Paint shop - allow any source (INSECURE)</descr>
+    </rule>
+
+    <rule>
+      <type>block</type>
+      <interface>wan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <source>
+        <any></any>
+      </source>
+      <destination>
+        <network>opt1</network>
+      </destination>
+      <descr>Block WAN to SCADA (good rule)</descr>
+    </rule>
+
+    <rule>
+      <type>pass</type>
+      <interface>opt4</interface>
+      <ipprotocol>inet</ipprotocol>
+      <protocol>tcp</protocol>
+      <source>
+        <network>opt4</network>
+      </source>
+      <destination>
+        <any></any>
+      </destination>
+      <descr>Maintenance - TCP to anywhere (needs review)</descr>
+    </rule>
+  </filter>
+
+  <!-- === DHCP servers (optional examples; enable as needed) === -->
+  <dhcpd>
+    <lan>
+      <enable>1</enable>
+      <range>
+        <from>10.10.0.100</from>
+        <to>10.10.0.200</to>
+      </range>
+      <gateway>10.10.0.1</gateway>
+      <domain>corp.local</domain>
+      <dnsserver>10.20.0.30</dnsserver>
+    </lan>
+    <opt1>
+      <enable>1</enable>
+      <range>
+        <from>10.20.0.100</from>
+        <to>10.20.0.200</to>
+      </range>
+      <gateway>10.20.0.1</gateway>
+      <domain>ot.local</domain>
+      <dnsserver>10.20.0.30</dnsserver>
+    </opt1>
+    <opt2>
+      <enable>1</enable>
+      <range>
+        <from>10.30.0.100</from>
+        <to>10.30.0.200</to>
+      </range>
+      <gateway>10.30.0.1</gateway>
+      <domain>assembly.local</domain>
+      <dnsserver>10.20.0.30</dnsserver>
+    </opt2>
+    <opt3>
+      <enable>1</enable>
+      <range>
+        <from>10.40.0.100</from>
+        <to>10.40.0.200</to>
+      </range>
+      <gateway>10.40.0.1</gateway>
+      <domain>paint.local</domain>
+      <dnsserver>10.20.0.30</dnsserver>
+    </opt3>
+    <opt4>
+      <enable>1</enable>
+      <range>
+        <from>10.50.0.100</from>
+        <to>10.50.0.200</to>
+      </range>
+      <gateway>10.50.0.1</gateway>
+      <domain>maint.local</domain>
+      <dnsserver>10.20.0.30</dnsserver>
+    </opt4>
+    <opt5>
+      <enable>1</enable>
+      <range>
+        <from>10.60.0.100</from>
+        <to>10.60.0.200</to>
+      </range>
+      <gateway>10.60.0.1</gateway>
+      <domain>zzbotz.dmz</domain>
+      <dnsserver>1.1.1.1</dnsserver>
+    </opt5>
+  </dhcpd>
+
+  <!-- === Shaper / IDS / VPN sections omitted for brevity === -->
+  <descriptive_note>
+    <![CDATA[
+    This configuration template sets up separate interfaces and policies for:
+      - Corporate (10.10.0.0/24)
+      - OT Secure Management Zone (10.20.0.0/24)
+      - Manufacturing Assembly (10.30.0.0/24)
+      - Paint Shop (10.40.0.0/24)
+      - Maintenance (10.50.0.0/24)
+      - DMZ for zzbotz vendor networks (10.60.0.0/24)
+
+    Key policies:
+      - SMZ can manage OT zones using limited mgmt ports.
+      - OT zones send historian/DNS/NTP traffic to SMZ only.
+      - Inter-zone lateral movement is blocked by default.
+      - DMZ limited to outbound vendor VPN ports; SMZ can reach robot controllers via HTTPS.
+      - Corporate is broadly allowed to any (tighten for production).
+    Review and tailor before importing into OPNsense.
+    ]]>
+  </descriptive_note>
+</opnsense>

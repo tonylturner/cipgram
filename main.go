@@ -100,6 +100,15 @@ func processFirewallConfig(configPath string, paths *output.OutputPaths, project
 		}
 	}
 
+	// Generate firewall rules summary
+	rulesPath := filepath.Join(paths.FirewallAnalysis, "firewall_rules.txt")
+	log.Printf("📋 Generating firewall rules summary...")
+	if err := generator.GenerateFirewallRulesSummary(rulesPath); err != nil {
+		log.Printf("Warning: Failed to generate rules summary: %v", err)
+	} else {
+		log.Printf("✅ Firewall rules: %s", rulesPath)
+	}
+
 	// Generate IEC 62443 zone diagram
 	zonePath := filepath.Join(paths.IEC62443Diagrams, "iec62443_zones.dot")
 	log.Printf("🏭 Generating IEC 62443 zone diagram...")
