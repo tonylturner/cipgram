@@ -9,7 +9,7 @@ CIPgram helps with **OT network segmentation planning** and **compliance assessm
 
 ### **Multi-Source Analysis**
 - **PCAP Analysis** - Traffic-based asset discovery and behavior analysis
-- **Firewall Integration** - OPNsense configuration parsing (FortiGate, pfSense coming soon)
+- **Firewall Integration** - OPNsense, FortiGate, Vyatta, iptables, and Firewalla support
 - **Combined Analysis** - Policy compliance and segmentation opportunity detection
 
 ### **Industry Standards Compliance**
@@ -26,16 +26,19 @@ CIPgram helps with **OT network segmentation planning** and **compliance assessm
 
 ```bash
 # Build the tool
-go build -o cipgram
+go build -o cipgram cmd/cipgram/main.go
+
+# Analyze firewall configuration only
+./cipgram -firewall-config fwconfigs/opnsense_config.xml -project "my_analysis"
 
 # Analyze PCAP traffic only  
 ./cipgram -pcap traffic.pcap -project "network_baseline"
 
-# With custom project name
-./cipgram -pcap ~/Downloads/ENIP.pcap -project "factory_analysis"
-
 # Combined analysis (when you have both)
 ./cipgram -pcap traffic.pcap -firewall-config firewall.xml -project "compliance_assessment"
+
+# Generate images (requires Graphviz)
+./cipgram -firewall-config config.xml -project "visual_analysis" -images=true
 ```
 
 ## 📊 Output Structure

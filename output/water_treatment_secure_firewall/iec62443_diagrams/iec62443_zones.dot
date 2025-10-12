@@ -9,22 +9,6 @@ digraph IEC62443Zones {
   fontsize=16;
   fontname="Arial Bold";
 
-  subgraph cluster_Industrial_Zone {
-    label="Industrial Zone";
-    style="filled,bold";
-    bgcolor="#c8e6c9";
-    color="#1b5e20";
-    penwidth=3;
-    fontsize=14;
-    fontname="Arial Bold";
-
-    "opt2" [label="opt2\n10.100.2.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
-    "opt3" [label="opt3\n10.100.3.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
-    "opt5" [label="opt5\n10.50.1.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
-    "lan" [label="lan\n192.168.10.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
-    "opt1" [label="opt1\n10.100.1.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
-  }
-
   subgraph cluster_DMZ_Zone {
     label="DMZ Zone";
     style="filled,bold";
@@ -36,6 +20,22 @@ digraph IEC62443Zones {
 
     "opt4" [label="opt4\n10.200.1.1/24\nRisk: Medium", shape="box", style="rounded,filled", fillcolor="white"];
     "wan" [label="wan\n\nRisk: Medium", shape="box", style="rounded,filled", fillcolor="white"];
+  }
+
+  subgraph cluster_Industrial_Zone {
+    label="Industrial Zone";
+    style="filled,bold";
+    bgcolor="#c8e6c9";
+    color="#1b5e20";
+    penwidth=3;
+    fontsize=14;
+    fontname="Arial Bold";
+
+    "opt5" [label="opt5\n10.50.1.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
+    "lan" [label="lan\n192.168.10.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
+    "opt1" [label="opt1\n10.100.1.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
+    "opt2" [label="opt2\n10.100.2.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
+    "opt3" [label="opt3\n10.100.3.1/24\nRisk: High", shape="box", style="rounded,filled", fillcolor="white"];
   }
 
   // Conduits (Zone Connections)

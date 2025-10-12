@@ -6,16 +6,16 @@ import (
 	"os"
 	"strings"
 
-	"cipgram/internal/interfaces"
+	"cipgram/pkg/types"
 )
 
 // FirewallDiagramGenerator creates diagrams from firewall configuration data only
 type FirewallDiagramGenerator struct {
-	model *interfaces.NetworkModel
+	model *types.NetworkModel
 }
 
 // NewFirewallDiagramGenerator creates a new firewall diagram generator
-func NewFirewallDiagramGenerator(model *interfaces.NetworkModel) *FirewallDiagramGenerator {
+func NewFirewallDiagramGenerator(model *types.NetworkModel) *FirewallDiagramGenerator {
 	return &FirewallDiagramGenerator{
 		model: model,
 	}
@@ -202,7 +202,7 @@ func (g *FirewallDiagramGenerator) GenerateFirewallRulesSummary(outputPath strin
 	fmt.Fprintf(w, "⚠️  RISK ASSESSMENT BY ZONE\n")
 	fmt.Fprintf(w, "───────────────────────────────────────────────────────────────────────────────\n")
 
-	zoneRisks := make(map[interfaces.IEC62443Zone][]string)
+	zoneRisks := make(map[types.IEC62443Zone][]string)
 	for _, network := range g.model.Networks {
 		zoneRisks[network.Zone] = append(zoneRisks[network.Zone],
 			fmt.Sprintf("%s (%s)", network.ID, network.CIDR))
@@ -211,13 +211,13 @@ func (g *FirewallDiagramGenerator) GenerateFirewallRulesSummary(outputPath strin
 	for zone, networks := range zoneRisks {
 		var riskLevel string
 		switch zone {
-		case interfaces.IndustrialZone:
+		case types.IndustrialZone:
 			riskLevel = "HIGH RISK - Critical OT systems"
-		case interfaces.DMZZone:
+		case types.DMZZone:
 			riskLevel = "MEDIUM RISK - Internet exposed"
-		case interfaces.EnterpriseZone:
+		case types.EnterpriseZone:
 			riskLevel = "LOW RISK - IT systems"
-		case interfaces.RemoteAccessZone:
+		case types.RemoteAccessZone:
 			riskLevel = "LOW RISK - Controlled access"
 		default:
 			riskLevel = "UNKNOWN RISK"
@@ -272,13 +272,13 @@ func (g *FirewallDiagramGenerator) GenerateFirewallRulesSummary(outputPath strin
 		if policy.Action == "ALLOW" {
 			// Find the network this rule applies to and check its zone
 			for _, network := range g.model.Networks {
-				if network.ID == policy.Zone || 
-				   (policy.Zone == "lan" && network.ID == "lan") ||
-				   (strings.Contains(policy.Zone, "opt") && network.ID == policy.Zone) {
-					
-					if network.Zone == interfaces.IndustrialZone {
+				if network.ID == policy.Zone ||
+					(policy.Zone == "lan" && network.ID == "lan") ||
+					(strings.Contains(policy.Zone, "opt") && network.ID == policy.Zone) {
+
+					if network.Zone == types.IndustrialZone {
 						if (isAnyDest && isAnyPorts) || (isAnySource && isAnyDest) {
-							manufacturingZoneRisks = append(manufacturingZoneRisks, 
+							manufacturingZoneRisks = append(manufacturingZoneRisks,
 								fmt.Sprintf("   %s (%s - %s): %s", ruleNum, policy.Zone, network.Zone, policy.Description))
 						}
 					}
@@ -353,12 +353,12 @@ func (g *FirewallDiagramGenerator) GenerateFirewallRulesSummary(outputPath strin
 	goodDenyRules := 0
 	totalAllowRules := 0
 	criticalRisks := 0
-	
+
 	for _, policy := range g.model.Policies {
 		if policy.ID == "implicit-default-deny" {
 			continue
 		}
-		
+
 		if policy.Action == "ALLOW" {
 			totalAllowRules++
 			// Check for overly broad rules - be more aggressive in detection
@@ -366,8 +366,8 @@ func (g *FirewallDiagramGenerator) GenerateFirewallRulesSummary(outputPath strin
 				broadRules++
 			}
 			// Also flag rules that go to "any" destination with any protocol
-			if (policy.Destination.CIDR == "any" || policy.Destination.CIDR == "") && 
-			   (string(policy.Protocol) == "any" || string(policy.Protocol) == "") && len(policy.Ports) == 0 {
+			if (policy.Destination.CIDR == "any" || policy.Destination.CIDR == "") &&
+				(string(policy.Protocol) == "any" || string(policy.Protocol) == "") && len(policy.Ports) == 0 {
 				criticalRisks++
 			}
 		} else if policy.Action == "DENY" || policy.Action == "BLOCK" {
@@ -382,33 +382,33 @@ func (g *FirewallDiagramGenerator) GenerateFirewallRulesSummary(outputPath strin
 		priorityCount++
 		foundIssues = true
 	}
-	
+
 	if broadRules > 0 && !foundIssues {
 		fmt.Fprintf(w, "%d. ⚠️  REVIEW: Found %d overly permissive ALLOW rules\n", priorityCount, broadRules)
 		fmt.Fprintf(w, "   → Consider adding specific port restrictions and destination limits\n")
 		priorityCount++
 		foundIssues = true
 	}
-	
+
 	if goodDenyRules > 0 {
 		fmt.Fprintf(w, "%d. ✅ GOOD: Found %d explicit DENY rules - excellent defense in depth!\n", priorityCount, goodDenyRules)
 		fmt.Fprintf(w, "   → Keep these rules and consider adding logging for monitoring\n")
 		priorityCount++
 	}
-	
+
 	if totalAllowRules < 5 && criticalRisks == 0 && len(anyToAnyRules) == 0 && len(manufacturingZoneRisks) == 0 {
 		fmt.Fprintf(w, "%d. 💡 SUGGESTION: Configuration has %d ALLOW rules - appears well-controlled\n", priorityCount, totalAllowRules)
 		fmt.Fprintf(w, "   → Monitor actual traffic patterns to ensure rules aren't too restrictive\n")
 		priorityCount++
 	}
-	
+
 	// Only show "no critical violations" if we really found no issues
 	if !foundIssues && goodDenyRules == 0 && totalAllowRules > 0 && criticalRisks == 0 {
 		fmt.Fprintf(w, "✅ No critical rule violations detected in this configuration.\n")
 		fmt.Fprintf(w, "   → Consider adding explicit DENY rules before default deny for better logging\n")
 		fmt.Fprintf(w, "   → Monitor traffic patterns and tighten rules based on actual usage\n")
 	}
-	
+
 	if totalAllowRules == 0 {
 		fmt.Fprintf(w, "ℹ️  No explicit ALLOW rules found - all traffic blocked by default deny.\n")
 		fmt.Fprintf(w, "   → Add specific ALLOW rules for required business communications\n")
@@ -425,17 +425,17 @@ func (g *FirewallDiagramGenerator) GenerateFirewallRulesSummary(outputPath strin
 
 	for _, network := range g.model.Networks {
 		switch network.Zone {
-		case interfaces.IndustrialZone:
+		case types.IndustrialZone:
 			manufacturingZones = append(manufacturingZones, network.ID)
-		case interfaces.EnterpriseZone:
+		case types.EnterpriseZone:
 			enterpriseZones = append(enterpriseZones, network.ID)
-		case interfaces.DMZZone:
+		case types.DMZZone:
 			dmzZones = append(dmzZones, network.ID)
 		}
 	}
-	
+
 	if len(manufacturingZones) > 0 {
-		fmt.Fprintf(w, "• Industrial Zones (%s): Restrict to specific MES/Historian/DNS servers\n", 
+		fmt.Fprintf(w, "• Industrial Zones (%s): Restrict to specific MES/Historian/DNS servers\n",
 			strings.Join(manufacturingZones, ","))
 		fmt.Fprintf(w, "  - Implement strict protocol controls (Modbus, OPC-UA, EtherNet/IP only)\n")
 		fmt.Fprintf(w, "  - Block internet access except for specific vendor support tunnels\n")
@@ -474,7 +474,7 @@ func (g *FirewallDiagramGenerator) GenerateFirewallRulesSummary(outputPath strin
 	}
 
 	if len(manufacturingZones) > 0 {
-		fmt.Fprintf(w, "• Monitor Industrial Zone (%s) outbound connections for anomalies\n", 
+		fmt.Fprintf(w, "• Monitor Industrial Zone (%s) outbound connections for anomalies\n",
 			strings.Join(manufacturingZones, ","))
 		fmt.Fprintf(w, "• Set up alerts for unexpected OT protocol usage or destinations\n")
 	}
@@ -563,15 +563,15 @@ func (g *FirewallDiagramGenerator) generateZoneClusters(w *bufio.Writer) {
 
 		// Zone-specific styling
 		switch zone {
-		case interfaces.IndustrialZone:
+		case types.IndustrialZone:
 			fmt.Fprintln(w, "    style=filled;")
 			fmt.Fprintln(w, "    bgcolor=\"#e8f5e8\";")
 			fmt.Fprintln(w, "    color=\"#2e7d32\";")
-		case interfaces.DMZZone:
+		case types.DMZZone:
 			fmt.Fprintln(w, "    style=filled;")
 			fmt.Fprintln(w, "    bgcolor=\"#fff3e0\";")
 			fmt.Fprintln(w, "    color=\"#f57c00\";")
-		case interfaces.RemoteAccessZone:
+		case types.RemoteAccessZone:
 			fmt.Fprintln(w, "    style=filled;")
 			fmt.Fprintln(w, "    bgcolor=\"#e1f5fe\";")
 			fmt.Fprintln(w, "    color=\"#0277bd\";")
@@ -625,7 +625,7 @@ func (g *FirewallDiagramGenerator) generateSecurityPolicyFlows(w *bufio.Writer) 
 			edgeColor := "green"
 			edgeStyle := "solid"
 
-			if policy.Action == interfaces.Deny {
+			if policy.Action == types.Deny {
 				edgeColor = "red"
 				edgeStyle = "dashed"
 			}
@@ -661,7 +661,7 @@ func (g *FirewallDiagramGenerator) generateFirewallLegend(w *bufio.Writer) {
 }
 
 // generateIEC62443Zone creates a zone cluster for IEC 62443 diagram
-func (g *FirewallDiagramGenerator) generateIEC62443Zone(w *bufio.Writer, zone interfaces.IEC62443Zone, networks []*interfaces.NetworkSegment) {
+func (g *FirewallDiagramGenerator) generateIEC62443Zone(w *bufio.Writer, zone types.IEC62443Zone, networks []*types.NetworkSegment) {
 	if len(networks) == 0 {
 		return
 	}
@@ -672,19 +672,19 @@ func (g *FirewallDiagramGenerator) generateIEC62443Zone(w *bufio.Writer, zone in
 
 	// IEC 62443 zone styling
 	switch zone {
-	case interfaces.IndustrialZone:
+	case types.IndustrialZone:
 		fmt.Fprintln(w, "    style=\"filled,bold\";")
 		fmt.Fprintln(w, "    bgcolor=\"#c8e6c9\";")
 		fmt.Fprintln(w, "    color=\"#1b5e20\";")
-	case interfaces.DMZZone:
+	case types.DMZZone:
 		fmt.Fprintln(w, "    style=\"filled,bold\";")
 		fmt.Fprintln(w, "    bgcolor=\"#ffe0b2\";")
 		fmt.Fprintln(w, "    color=\"#e65100\";")
-	case interfaces.EnterpriseZone:
+	case types.EnterpriseZone:
 		fmt.Fprintln(w, "    style=\"filled,bold\";")
 		fmt.Fprintln(w, "    bgcolor=\"#e1bee7\";")
 		fmt.Fprintln(w, "    color=\"#4a148c\";")
-	case interfaces.RemoteAccessZone:
+	case types.RemoteAccessZone:
 		fmt.Fprintln(w, "    style=\"filled,bold\";")
 		fmt.Fprintln(w, "    bgcolor=\"#b3e5fc\";")
 		fmt.Fprintln(w, "    color=\"#01579b\";")
@@ -711,7 +711,7 @@ func (g *FirewallDiagramGenerator) generateIEC62443Zone(w *bufio.Writer, zone in
 }
 
 // generateConduits creates conduit connections between zones
-func (g *FirewallDiagramGenerator) generateConduits(w *bufio.Writer, zoneNetworks map[interfaces.IEC62443Zone][]*interfaces.NetworkSegment) {
+func (g *FirewallDiagramGenerator) generateConduits(w *bufio.Writer, zoneNetworks map[types.IEC62443Zone][]*types.NetworkSegment) {
 	fmt.Fprintln(w, "  // Conduits (Zone Connections)")
 
 	// Track zone pairs to avoid duplicates
@@ -751,10 +751,10 @@ func (g *FirewallDiagramGenerator) generateIEC62443Legend(w *bufio.Writer) {
 	fmt.Fprintln(w, "    fontsize=12;")
 	fmt.Fprintln(w, "    fontname=\"Arial Bold\";")
 	fmt.Fprintln(w, "")
-    fmt.Fprintln(w, "    industrial_zone [label=\"Industrial Zone\\n(Level 0-2)\", fillcolor=\"#c8e6c9\", style=\"filled,rounded\", shape=\"box\"];")
-    fmt.Fprintln(w, "    dmz_zone [label=\"DMZ Zone\\n(Network Perimeter)\", fillcolor=\"#ffe0b2\", style=\"filled,rounded\", shape=\"box\"];")
-    fmt.Fprintln(w, "    ent_zone [label=\"Enterprise Zone\\n(Level 3-5)\", fillcolor=\"#e1bee7\", style=\"filled,rounded\", shape=\"box\"];")
-    fmt.Fprintln(w, "    remote_zone [label=\"Remote Access Zone\\n(VPN/Remote)\", fillcolor=\"#b3e5fc\", style=\"filled,rounded\", shape=\"box\"];")
+	fmt.Fprintln(w, "    industrial_zone [label=\"Industrial Zone\\n(Level 0-2)\", fillcolor=\"#c8e6c9\", style=\"filled,rounded\", shape=\"box\"];")
+	fmt.Fprintln(w, "    dmz_zone [label=\"DMZ Zone\\n(Network Perimeter)\", fillcolor=\"#ffe0b2\", style=\"filled,rounded\", shape=\"box\"];")
+	fmt.Fprintln(w, "    ent_zone [label=\"Enterprise Zone\\n(Level 3-5)\", fillcolor=\"#e1bee7\", style=\"filled,rounded\", shape=\"box\"];")
+	fmt.Fprintln(w, "    remote_zone [label=\"Remote Access Zone\\n(VPN/Remote)\", fillcolor=\"#b3e5fc\", style=\"filled,rounded\", shape=\"box\"];")
 	fmt.Fprintln(w, "  }")
 }
 
@@ -794,7 +794,7 @@ func (g *FirewallDiagramGenerator) generateFirewallCentricTopology(w *bufio.Writ
 }
 
 // generateNetworkNode creates a node for a network segment
-func (g *FirewallDiagramGenerator) generateNetworkNode(w *bufio.Writer, network *interfaces.NetworkSegment) {
+func (g *FirewallDiagramGenerator) generateNetworkNode(w *bufio.Writer, network *types.NetworkSegment) {
 	nodeID := fmt.Sprintf("net_%s", network.ID)
 
 	// Build the network label with all relevant information
@@ -831,7 +831,7 @@ func (g *FirewallDiagramGenerator) generateNetworkNode(w *bufio.Writer, network 
 }
 
 // generateFirewallToNetworkConnection creates connection from firewall to network
-func (g *FirewallDiagramGenerator) generateFirewallToNetworkConnection(w *bufio.Writer, network *interfaces.NetworkSegment) {
+func (g *FirewallDiagramGenerator) generateFirewallToNetworkConnection(w *bufio.Writer, network *types.NetworkSegment) {
 	nodeID := fmt.Sprintf("net_%s", network.ID)
 
 	// Create interface label
@@ -911,15 +911,15 @@ func (g *FirewallDiagramGenerator) generateRuleAnnotations(w *bufio.Writer) {
 }
 
 // getZoneColor returns the fill color for a zone
-func (g *FirewallDiagramGenerator) getZoneColor(zone interfaces.IEC62443Zone) string {
+func (g *FirewallDiagramGenerator) getZoneColor(zone types.IEC62443Zone) string {
 	switch zone {
-	case interfaces.IndustrialZone:
+	case types.IndustrialZone:
 		return "#c8e6c9" // Light green
-	case interfaces.DMZZone:
+	case types.DMZZone:
 		return "#ffe0b2" // Light orange
-	case interfaces.EnterpriseZone:
+	case types.EnterpriseZone:
 		return "#e1bee7" // Light purple
-	case interfaces.RemoteAccessZone:
+	case types.RemoteAccessZone:
 		return "#b3e5fc" // Light blue
 	default:
 		return "#f5f5f5" // Light gray
@@ -927,15 +927,15 @@ func (g *FirewallDiagramGenerator) getZoneColor(zone interfaces.IEC62443Zone) st
 }
 
 // getZoneBorderColor returns the border color for a zone
-func (g *FirewallDiagramGenerator) getZoneBorderColor(zone interfaces.IEC62443Zone) string {
+func (g *FirewallDiagramGenerator) getZoneBorderColor(zone types.IEC62443Zone) string {
 	switch zone {
-	case interfaces.IndustrialZone:
+	case types.IndustrialZone:
 		return "#2e7d32" // Dark green
-	case interfaces.DMZZone:
+	case types.DMZZone:
 		return "#f57c00" // Dark orange
-	case interfaces.EnterpriseZone:
+	case types.EnterpriseZone:
 		return "#7b1fa2" // Dark purple
-	case interfaces.RemoteAccessZone:
+	case types.RemoteAccessZone:
 		return "#0277bd" // Dark blue
 	default:
 		return "#666666" // Dark gray
@@ -944,8 +944,8 @@ func (g *FirewallDiagramGenerator) getZoneBorderColor(zone interfaces.IEC62443Zo
 
 // Helper functions
 
-func (g *FirewallDiagramGenerator) groupNetworksByZone() map[interfaces.IEC62443Zone][]*interfaces.NetworkSegment {
-	zoneNetworks := make(map[interfaces.IEC62443Zone][]*interfaces.NetworkSegment)
+func (g *FirewallDiagramGenerator) groupNetworksByZone() map[types.IEC62443Zone][]*types.NetworkSegment {
+	zoneNetworks := make(map[types.IEC62443Zone][]*types.NetworkSegment)
 
 	for _, network := range g.model.Networks {
 		zoneNetworks[network.Zone] = append(zoneNetworks[network.Zone], network)
@@ -954,7 +954,7 @@ func (g *FirewallDiagramGenerator) groupNetworksByZone() map[interfaces.IEC62443
 	return zoneNetworks
 }
 
-func (g *FirewallDiagramGenerator) buildNetworkSegmentLabel(segment *interfaces.NetworkSegment) string {
+func (g *FirewallDiagramGenerator) buildNetworkSegmentLabel(segment *types.NetworkSegment) string {
 	label := segment.ID
 	if segment.Name != "" {
 		label += "\\n" + segment.Name
@@ -968,13 +968,13 @@ func (g *FirewallDiagramGenerator) buildNetworkSegmentLabel(segment *interfaces.
 	return label
 }
 
-func (g *FirewallDiagramGenerator) getSegmentColor(segment *interfaces.NetworkSegment) string {
+func (g *FirewallDiagramGenerator) getSegmentColor(segment *types.NetworkSegment) string {
 	switch segment.Risk {
-	case interfaces.HighRisk:
+	case types.HighRisk:
 		return "#ffcdd2"
-	case interfaces.MediumRisk:
+	case types.MediumRisk:
 		return "#fff3e0"
-	case interfaces.LowRisk:
+	case types.LowRisk:
 		return "#e8f5e8"
 	default:
 		return "#f5f5f5"
@@ -991,7 +991,7 @@ func (g *FirewallDiagramGenerator) findNetworkByReference(ref string) string {
 	return ""
 }
 
-func (g *FirewallDiagramGenerator) getZoneForNetwork(networkRef string) interfaces.IEC62443Zone {
+func (g *FirewallDiagramGenerator) getZoneForNetwork(networkRef string) types.IEC62443Zone {
 	networkID := g.findNetworkByReference(networkRef)
 	if networkID != "" {
 		if network, exists := g.model.Networks[networkID]; exists {
@@ -1001,7 +1001,7 @@ func (g *FirewallDiagramGenerator) getZoneForNetwork(networkRef string) interfac
 	return ""
 }
 
-func (g *FirewallDiagramGenerator) getZoneRepresentative(zone interfaces.IEC62443Zone, zoneNetworks map[interfaces.IEC62443Zone][]*interfaces.NetworkSegment) string {
+func (g *FirewallDiagramGenerator) getZoneRepresentative(zone types.IEC62443Zone, zoneNetworks map[types.IEC62443Zone][]*types.NetworkSegment) string {
 	if networks, exists := zoneNetworks[zone]; exists && len(networks) > 0 {
 		return networks[0].ID
 	}

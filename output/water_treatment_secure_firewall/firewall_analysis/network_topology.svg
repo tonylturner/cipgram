@@ -15,155 +15,155 @@
 <!-- firewall -->
 <g id="node1" class="node">
 <title>firewall</title>
-<path fill="#e3f2fd" stroke="#1976d2" stroke-width="3" d="M94,-559.12C94,-559.12 33.75,-559.12 33.75,-559.12 27.75,-559.12 21.75,-553.12 21.75,-547.12 21.75,-547.12 21.75,-504.88 21.75,-504.88 21.75,-498.88 27.75,-492.88 33.75,-492.88 33.75,-492.88 94,-492.88 94,-492.88 100,-492.88 106,-498.88 106,-504.88 106,-504.88 106,-547.12 106,-547.12 106,-553.12 100,-559.12 94,-559.12"/>
-<text text-anchor="middle" x="63.88" y="-543.73" font-family="Arial Bold" font-size="12.00">🔥 Firewall</text>
-<text text-anchor="middle" x="63.88" y="-527.98" font-family="Arial Bold" font-size="12.00">(OPNsense)</text>
-<text text-anchor="middle" x="63.88" y="-499.73" font-family="Arial Bold" font-size="12.00">Interfaces:</text>
+<path fill="#e3f2fd" stroke="#1976d2" stroke-width="3" d="M94,-571.12C94,-571.12 33.75,-571.12 33.75,-571.12 27.75,-571.12 21.75,-565.12 21.75,-559.12 21.75,-559.12 21.75,-516.88 21.75,-516.88 21.75,-510.88 27.75,-504.88 33.75,-504.88 33.75,-504.88 94,-504.88 94,-504.88 100,-504.88 106,-510.88 106,-516.88 106,-516.88 106,-559.12 106,-559.12 106,-565.12 100,-571.12 94,-571.12"/>
+<text text-anchor="middle" x="63.88" y="-555.73" font-family="Arial Bold" font-size="12.00">🔥 Firewall</text>
+<text text-anchor="middle" x="63.88" y="-539.98" font-family="Arial Bold" font-size="12.00">(OPNsense)</text>
+<text text-anchor="middle" x="63.88" y="-511.73" font-family="Arial Bold" font-size="12.00">Interfaces:</text>
 </g>
-<!-- net_opt1 -->
+<!-- net_opt4 -->
 <g id="node2" class="node">
-<title>net_opt1</title>
-<path fill="#c8e6c9" stroke="#2e7d32" stroke-width="2" d="M497.75,-1064C497.75,-1064 350.5,-1064 350.5,-1064 344.5,-1064 338.5,-1058 338.5,-1052 338.5,-1052 338.5,-984 338.5,-984 338.5,-978 344.5,-972 350.5,-972 350.5,-972 497.75,-972 497.75,-972 503.75,-972 509.75,-978 509.75,-984 509.75,-984 509.75,-1052 509.75,-1052 509.75,-1058 503.75,-1064 497.75,-1064"/>
-<text text-anchor="middle" x="424.12" y="-1050.5" font-family="Arial" font-size="10.00">opt1</text>
-<text text-anchor="middle" x="424.12" y="-1038.5" font-family="Arial" font-size="10.00">10.100.1.1/24</text>
-<text text-anchor="middle" x="424.12" y="-1026.5" font-family="Arial" font-size="10.00">(SCADA Network &#45; Level 2 Control)</text>
-<text text-anchor="middle" x="424.12" y="-1002.5" font-family="Arial" font-size="10.00">Zone: Industrial Zone</text>
-<text text-anchor="middle" x="424.12" y="-990.5" font-family="Arial" font-size="10.00">Risk: High</text>
-<text text-anchor="middle" x="424.12" y="-978.5" font-family="Arial" font-size="10.00">Type: Production OT</text>
+<title>net_opt4</title>
+<path fill="#ffe0b2" stroke="#f57c00" stroke-width="2" d="M457.25,-1064C457.25,-1064 391,-1064 391,-1064 385,-1064 379,-1058 379,-1052 379,-1052 379,-984 379,-984 379,-978 385,-972 391,-972 391,-972 457.25,-972 457.25,-972 463.25,-972 469.25,-978 469.25,-984 469.25,-984 469.25,-1052 469.25,-1052 469.25,-1058 463.25,-1064 457.25,-1064"/>
+<text text-anchor="middle" x="424.12" y="-1050.5" font-family="Arial" font-size="10.00">opt4</text>
+<text text-anchor="middle" x="424.12" y="-1038.5" font-family="Arial" font-size="10.00">10.200.1.1/24</text>
+<text text-anchor="middle" x="424.12" y="-1026.5" font-family="Arial" font-size="10.00">(Historian DMZ)</text>
+<text text-anchor="middle" x="424.12" y="-1002.5" font-family="Arial" font-size="10.00">Zone: DMZ Zone</text>
+<text text-anchor="middle" x="424.12" y="-990.5" font-family="Arial" font-size="10.00">Risk: Medium</text>
+<text text-anchor="middle" x="424.12" y="-978.5" font-family="Arial" font-size="10.00">Type: DMZ</text>
 </g>
-<!-- firewall&#45;&gt;net_opt1 -->
-<g id="edge7" class="edge">
-<title>firewall&#45;&gt;net_opt1</title>
-<path fill="none" stroke="#666666" stroke-width="2" d="M107.36,-549.66C157.4,-549.66 232.75,-549.66 232.75,-549.66 232.75,-549.66 232.75,-1018 232.75,-1018 232.75,-1018 324.65,-1018 324.65,-1018"/>
-<polygon fill="#666666" stroke="#666666" stroke-width="2" points="324.65,-1021.5 334.65,-1018 324.65,-1014.5 324.65,-1021.5"/>
-<text text-anchor="middle" x="233.12" y="-1030.45" font-family="Arial" font-size="9.00">opt1</text>
-<text text-anchor="middle" x="233.12" y="-1019.95" font-family="Arial" font-size="9.00">10.100.1.1/24</text>
+<!-- firewall&#45;&gt;net_opt4 -->
+<g id="edge4" class="edge">
+<title>firewall&#45;&gt;net_opt4</title>
+<path fill="none" stroke="#666666" stroke-width="2" d="M107.34,-560.08C146.43,-560.08 197.75,-560.08 197.75,-560.08 197.75,-560.08 197.75,-1018 197.75,-1018 197.75,-1018 365.01,-1018 365.01,-1018"/>
+<polygon fill="#666666" stroke="#666666" stroke-width="2" points="365.01,-1021.5 375.01,-1018 365.01,-1014.5 365.01,-1021.5"/>
+<text text-anchor="middle" x="233.12" y="-1030.45" font-family="Arial" font-size="9.00">opt4</text>
+<text text-anchor="middle" x="233.12" y="-1019.95" font-family="Arial" font-size="9.00">10.200.1.1/24</text>
 </g>
-<!-- net_opt2 -->
+<!-- net_opt5 -->
 <g id="node3" class="node">
-<title>net_opt2</title>
-<path fill="#c8e6c9" stroke="#2e7d32" stroke-width="2" d="M497.75,-900C497.75,-900 350.5,-900 350.5,-900 344.5,-900 338.5,-894 338.5,-888 338.5,-888 338.5,-820 338.5,-820 338.5,-814 344.5,-808 350.5,-808 350.5,-808 497.75,-808 497.75,-808 503.75,-808 509.75,-814 509.75,-820 509.75,-820 509.75,-888 509.75,-888 509.75,-894 503.75,-900 497.75,-900"/>
-<text text-anchor="middle" x="424.12" y="-886.5" font-family="Arial" font-size="10.00">opt2</text>
-<text text-anchor="middle" x="424.12" y="-874.5" font-family="Arial" font-size="10.00">10.100.2.1/24</text>
-<text text-anchor="middle" x="424.12" y="-862.5" font-family="Arial" font-size="10.00">(HMI Network &#45; Level 1 Operations)</text>
+<title>net_opt5</title>
+<path fill="#c8e6c9" stroke="#2e7d32" stroke-width="2" d="M470,-900C470,-900 378.25,-900 378.25,-900 372.25,-900 366.25,-894 366.25,-888 366.25,-888 366.25,-820 366.25,-820 366.25,-814 372.25,-808 378.25,-808 378.25,-808 470,-808 470,-808 476,-808 482,-814 482,-820 482,-820 482,-888 482,-888 482,-894 476,-900 470,-900"/>
+<text text-anchor="middle" x="424.12" y="-886.5" font-family="Arial" font-size="10.00">opt5</text>
+<text text-anchor="middle" x="424.12" y="-874.5" font-family="Arial" font-size="10.00">10.50.1.1/24</text>
+<text text-anchor="middle" x="424.12" y="-862.5" font-family="Arial" font-size="10.00">(Remote Access VPN)</text>
 <text text-anchor="middle" x="424.12" y="-838.5" font-family="Arial" font-size="10.00">Zone: Industrial Zone</text>
 <text text-anchor="middle" x="424.12" y="-826.5" font-family="Arial" font-size="10.00">Risk: High</text>
 <text text-anchor="middle" x="424.12" y="-814.5" font-family="Arial" font-size="10.00">Type: Production OT</text>
 </g>
-<!-- firewall&#45;&gt;net_opt2 -->
-<g id="edge1" class="edge">
-<title>firewall&#45;&gt;net_opt2</title>
-<path fill="none" stroke="#666666" stroke-width="2" d="M107.45,-540.2C186.8,-540.2 346.75,-540.2 346.75,-540.2 346.75,-540.2 346.75,-793.99 346.75,-793.99"/>
-<polygon fill="#666666" stroke="#666666" stroke-width="2" points="343.25,-793.99 346.75,-803.99 350.25,-793.99 343.25,-793.99"/>
-<text text-anchor="middle" x="233.12" y="-866.45" font-family="Arial" font-size="9.00">opt2</text>
-<text text-anchor="middle" x="233.12" y="-855.95" font-family="Arial" font-size="9.00">10.100.2.1/24</text>
-</g>
-<!-- net_opt3 -->
-<g id="node4" class="node">
-<title>net_opt3</title>
-<path fill="#c8e6c9" stroke="#2e7d32" stroke-width="2" d="M481.62,-736C481.62,-736 366.62,-736 366.62,-736 360.62,-736 354.62,-730 354.62,-724 354.62,-724 354.62,-656 354.62,-656 354.62,-650 360.62,-644 366.62,-644 366.62,-644 481.62,-644 481.62,-644 487.62,-644 493.62,-650 493.62,-656 493.62,-656 493.62,-724 493.62,-724 493.62,-730 487.62,-736 481.62,-736"/>
-<text text-anchor="middle" x="424.12" y="-722.5" font-family="Arial" font-size="10.00">opt3</text>
-<text text-anchor="middle" x="424.12" y="-710.5" font-family="Arial" font-size="10.00">10.100.3.1/24</text>
-<text text-anchor="middle" x="424.12" y="-698.5" font-family="Arial" font-size="10.00">(Field Devices &#45; Level 0 I/O)</text>
-<text text-anchor="middle" x="424.12" y="-674.5" font-family="Arial" font-size="10.00">Zone: Industrial Zone</text>
-<text text-anchor="middle" x="424.12" y="-662.5" font-family="Arial" font-size="10.00">Risk: High</text>
-<text text-anchor="middle" x="424.12" y="-650.5" font-family="Arial" font-size="10.00">Type: Production OT</text>
-</g>
-<!-- firewall&#45;&gt;net_opt3 -->
-<g id="edge2" class="edge">
-<title>firewall&#45;&gt;net_opt3</title>
-<path fill="none" stroke="#666666" stroke-width="2" d="M107.33,-530.73C190.23,-530.73 362.75,-530.73 362.75,-530.73 362.75,-530.73 362.75,-630.05 362.75,-630.05"/>
-<polygon fill="#666666" stroke="#666666" stroke-width="2" points="359.25,-630.05 362.75,-640.05 366.25,-630.05 359.25,-630.05"/>
-<text text-anchor="middle" x="233.12" y="-702.45" font-family="Arial" font-size="9.00">opt3</text>
-<text text-anchor="middle" x="233.12" y="-691.95" font-family="Arial" font-size="9.00">10.100.3.1/24</text>
-</g>
-<!-- net_opt4 -->
-<g id="node5" class="node">
-<title>net_opt4</title>
-<path fill="#ffe0b2" stroke="#f57c00" stroke-width="2" d="M457.25,-572C457.25,-572 391,-572 391,-572 385,-572 379,-566 379,-560 379,-560 379,-492 379,-492 379,-486 385,-480 391,-480 391,-480 457.25,-480 457.25,-480 463.25,-480 469.25,-486 469.25,-492 469.25,-492 469.25,-560 469.25,-560 469.25,-566 463.25,-572 457.25,-572"/>
-<text text-anchor="middle" x="424.12" y="-558.5" font-family="Arial" font-size="10.00">opt4</text>
-<text text-anchor="middle" x="424.12" y="-546.5" font-family="Arial" font-size="10.00">10.200.1.1/24</text>
-<text text-anchor="middle" x="424.12" y="-534.5" font-family="Arial" font-size="10.00">(Historian DMZ)</text>
-<text text-anchor="middle" x="424.12" y="-510.5" font-family="Arial" font-size="10.00">Zone: DMZ Zone</text>
-<text text-anchor="middle" x="424.12" y="-498.5" font-family="Arial" font-size="10.00">Risk: Medium</text>
-<text text-anchor="middle" x="424.12" y="-486.5" font-family="Arial" font-size="10.00">Type: DMZ</text>
-</g>
-<!-- firewall&#45;&gt;net_opt4 -->
-<g id="edge3" class="edge">
-<title>firewall&#45;&gt;net_opt4</title>
-<path fill="none" stroke="#666666" stroke-width="2" d="M107.33,-521.27C107.33,-521.27 365.22,-521.27 365.22,-521.27"/>
-<polygon fill="#666666" stroke="#666666" stroke-width="2" points="365.22,-524.77 375.22,-521.27 365.22,-517.77 365.22,-524.77"/>
-<text text-anchor="middle" x="233.12" y="-538.45" font-family="Arial" font-size="9.00">opt4</text>
-<text text-anchor="middle" x="233.12" y="-527.95" font-family="Arial" font-size="9.00">10.200.1.1/24</text>
-</g>
-<!-- net_opt5 -->
-<g id="node6" class="node">
-<title>net_opt5</title>
-<path fill="#c8e6c9" stroke="#2e7d32" stroke-width="2" d="M470,-408C470,-408 378.25,-408 378.25,-408 372.25,-408 366.25,-402 366.25,-396 366.25,-396 366.25,-328 366.25,-328 366.25,-322 372.25,-316 378.25,-316 378.25,-316 470,-316 470,-316 476,-316 482,-322 482,-328 482,-328 482,-396 482,-396 482,-402 476,-408 470,-408"/>
-<text text-anchor="middle" x="424.12" y="-394.5" font-family="Arial" font-size="10.00">opt5</text>
-<text text-anchor="middle" x="424.12" y="-382.5" font-family="Arial" font-size="10.00">10.50.1.1/24</text>
-<text text-anchor="middle" x="424.12" y="-370.5" font-family="Arial" font-size="10.00">(Remote Access VPN)</text>
-<text text-anchor="middle" x="424.12" y="-346.5" font-family="Arial" font-size="10.00">Zone: Industrial Zone</text>
-<text text-anchor="middle" x="424.12" y="-334.5" font-family="Arial" font-size="10.00">Risk: High</text>
-<text text-anchor="middle" x="424.12" y="-322.5" font-family="Arial" font-size="10.00">Type: Production OT</text>
-</g>
 <!-- firewall&#45;&gt;net_opt5 -->
-<g id="edge4" class="edge">
+<g id="edge5" class="edge">
 <title>firewall&#45;&gt;net_opt5</title>
-<path fill="none" stroke="#666666" stroke-width="2" d="M107.47,-511.8C192.62,-511.8 372.75,-511.8 372.75,-511.8 372.75,-511.8 372.75,-422.01 372.75,-422.01"/>
-<polygon fill="#666666" stroke="#666666" stroke-width="2" points="376.25,-422.01 372.75,-412.01 369.25,-422.01 376.25,-422.01"/>
-<text text-anchor="middle" x="233.12" y="-374.45" font-family="Arial" font-size="9.00">opt5</text>
-<text text-anchor="middle" x="233.12" y="-363.95" font-family="Arial" font-size="9.00">10.50.1.1/24</text>
+<path fill="none" stroke="#666666" stroke-width="2" d="M107.36,-549.04C167.24,-549.04 267.75,-549.04 267.75,-549.04 267.75,-549.04 267.75,-854 267.75,-854 267.75,-854 352.42,-854 352.42,-854"/>
+<polygon fill="#666666" stroke="#666666" stroke-width="2" points="352.42,-857.5 362.42,-854 352.42,-850.5 352.42,-857.5"/>
+<text text-anchor="middle" x="233.12" y="-866.45" font-family="Arial" font-size="9.00">opt5</text>
+<text text-anchor="middle" x="233.12" y="-855.95" font-family="Arial" font-size="9.00">10.50.1.1/24</text>
 </g>
 <!-- net_wan -->
-<g id="node7" class="node">
+<g id="node4" class="node">
 <title>net_wan</title>
-<path fill="#ffe0b2" stroke="#f57c00" stroke-width="2" d="M482,-244C482,-244 366.25,-244 366.25,-244 360.25,-244 354.25,-238 354.25,-232 354.25,-232 354.25,-176 354.25,-176 354.25,-170 360.25,-164 366.25,-164 366.25,-164 482,-164 482,-164 488,-164 494,-170 494,-176 494,-176 494,-232 494,-232 494,-238 488,-244 482,-244"/>
-<text text-anchor="middle" x="424.12" y="-230.5" font-family="Arial" font-size="10.00">wan</text>
-<text text-anchor="middle" x="424.12" y="-218.5" font-family="Arial" font-size="10.00">(WAN &#45; Internet Connection)</text>
-<text text-anchor="middle" x="424.12" y="-194.5" font-family="Arial" font-size="10.00">Zone: DMZ Zone</text>
-<text text-anchor="middle" x="424.12" y="-182.5" font-family="Arial" font-size="10.00">Risk: Medium</text>
-<text text-anchor="middle" x="424.12" y="-170.5" font-family="Arial" font-size="10.00">Type: Internet</text>
+<path fill="#ffe0b2" stroke="#f57c00" stroke-width="2" d="M482,-736C482,-736 366.25,-736 366.25,-736 360.25,-736 354.25,-730 354.25,-724 354.25,-724 354.25,-668 354.25,-668 354.25,-662 360.25,-656 366.25,-656 366.25,-656 482,-656 482,-656 488,-656 494,-662 494,-668 494,-668 494,-724 494,-724 494,-730 488,-736 482,-736"/>
+<text text-anchor="middle" x="424.12" y="-722.5" font-family="Arial" font-size="10.00">wan</text>
+<text text-anchor="middle" x="424.12" y="-710.5" font-family="Arial" font-size="10.00">(WAN &#45; Internet Connection)</text>
+<text text-anchor="middle" x="424.12" y="-686.5" font-family="Arial" font-size="10.00">Zone: DMZ Zone</text>
+<text text-anchor="middle" x="424.12" y="-674.5" font-family="Arial" font-size="10.00">Risk: Medium</text>
+<text text-anchor="middle" x="424.12" y="-662.5" font-family="Arial" font-size="10.00">Type: Internet</text>
 </g>
 <!-- firewall&#45;&gt;net_wan -->
-<g id="edge5" class="edge">
+<g id="edge6" class="edge">
 <title>firewall&#45;&gt;net_wan</title>
-<path fill="none" stroke="#666666" stroke-width="2" d="M107.38,-502.34C189.41,-502.34 358.75,-502.34 358.75,-502.34 358.75,-502.34 358.75,-257.88 358.75,-257.88"/>
-<polygon fill="#666666" stroke="#666666" stroke-width="2" points="362.25,-257.88 358.75,-247.88 355.25,-257.88 362.25,-257.88"/>
-<text text-anchor="middle" x="233.12" y="-205.95" font-family="Arial" font-size="9.00">wan</text>
+<path fill="none" stroke="#666666" stroke-width="2" d="M107.19,-538C189.8,-538 361.75,-538 361.75,-538 361.75,-538 361.75,-642.28 361.75,-642.28"/>
+<polygon fill="#666666" stroke="#666666" stroke-width="2" points="358.25,-642.28 361.75,-652.28 365.25,-642.28 358.25,-642.28"/>
+<text text-anchor="middle" x="233.12" y="-697.95" font-family="Arial" font-size="9.00">wan</text>
 </g>
 <!-- net_lan -->
-<g id="node8" class="node">
+<g id="node5" class="node">
 <title>net_lan</title>
-<path fill="#c8e6c9" stroke="#2e7d32" stroke-width="2" d="M466.25,-92C466.25,-92 382,-92 382,-92 376,-92 370,-86 370,-80 370,-80 370,-12 370,-12 370,-6 376,0 382,0 382,0 466.25,0 466.25,0 472.25,0 478.25,-6 478.25,-12 478.25,-12 478.25,-80 478.25,-80 478.25,-86 472.25,-92 466.25,-92"/>
-<text text-anchor="middle" x="424.12" y="-78.5" font-family="Arial" font-size="10.00">lan</text>
-<text text-anchor="middle" x="424.12" y="-66.5" font-family="Arial" font-size="10.00">192.168.10.1/24</text>
-<text text-anchor="middle" x="424.12" y="-54.5" font-family="Arial" font-size="10.00">(Corporate Network)</text>
-<text text-anchor="middle" x="424.12" y="-30.5" font-family="Arial" font-size="10.00">Zone: Industrial Zone</text>
-<text text-anchor="middle" x="424.12" y="-18.5" font-family="Arial" font-size="10.00">Risk: High</text>
-<text text-anchor="middle" x="424.12" y="-6.5" font-family="Arial" font-size="10.00">Type: Corporate IT</text>
+<path fill="#c8e6c9" stroke="#2e7d32" stroke-width="2" d="M466.25,-584C466.25,-584 382,-584 382,-584 376,-584 370,-578 370,-572 370,-572 370,-504 370,-504 370,-498 376,-492 382,-492 382,-492 466.25,-492 466.25,-492 472.25,-492 478.25,-498 478.25,-504 478.25,-504 478.25,-572 478.25,-572 478.25,-578 472.25,-584 466.25,-584"/>
+<text text-anchor="middle" x="424.12" y="-570.5" font-family="Arial" font-size="10.00">lan</text>
+<text text-anchor="middle" x="424.12" y="-558.5" font-family="Arial" font-size="10.00">192.168.10.1/24</text>
+<text text-anchor="middle" x="424.12" y="-546.5" font-family="Arial" font-size="10.00">(Corporate Network)</text>
+<text text-anchor="middle" x="424.12" y="-522.5" font-family="Arial" font-size="10.00">Zone: Industrial Zone</text>
+<text text-anchor="middle" x="424.12" y="-510.5" font-family="Arial" font-size="10.00">Risk: High</text>
+<text text-anchor="middle" x="424.12" y="-498.5" font-family="Arial" font-size="10.00">Type: Corporate IT</text>
 </g>
 <!-- firewall&#45;&gt;net_lan -->
-<g id="edge6" class="edge">
+<g id="edge7" class="edge">
 <title>firewall&#45;&gt;net_lan</title>
-<path fill="none" stroke="#666666" stroke-width="2" d="M63.75,-491.48C63.75,-381.42 63.75,-46 63.75,-46 63.75,-46 356.36,-46 356.36,-46"/>
-<polygon fill="#666666" stroke="#666666" stroke-width="2" points="356.36,-49.5 366.36,-46 356.36,-42.5 356.36,-49.5"/>
-<text text-anchor="middle" x="233.12" y="-58.45" font-family="Arial" font-size="9.00">lan</text>
-<text text-anchor="middle" x="233.12" y="-47.95" font-family="Arial" font-size="9.00">192.168.10.1/24</text>
+<path fill="none" stroke="#666666" stroke-width="2" d="M107.33,-526.96C107.33,-526.96 356,-526.96 356,-526.96"/>
+<polygon fill="#666666" stroke="#666666" stroke-width="2" points="356,-530.46 366,-526.96 356,-523.46 356,-530.46"/>
+<text text-anchor="middle" x="233.12" y="-550.45" font-family="Arial" font-size="9.00">lan</text>
+<text text-anchor="middle" x="233.12" y="-539.95" font-family="Arial" font-size="9.00">192.168.10.1/24</text>
+</g>
+<!-- net_opt1 -->
+<g id="node6" class="node">
+<title>net_opt1</title>
+<path fill="#c8e6c9" stroke="#2e7d32" stroke-width="2" d="M497.75,-420C497.75,-420 350.5,-420 350.5,-420 344.5,-420 338.5,-414 338.5,-408 338.5,-408 338.5,-340 338.5,-340 338.5,-334 344.5,-328 350.5,-328 350.5,-328 497.75,-328 497.75,-328 503.75,-328 509.75,-334 509.75,-340 509.75,-340 509.75,-408 509.75,-408 509.75,-414 503.75,-420 497.75,-420"/>
+<text text-anchor="middle" x="424.12" y="-406.5" font-family="Arial" font-size="10.00">opt1</text>
+<text text-anchor="middle" x="424.12" y="-394.5" font-family="Arial" font-size="10.00">10.100.1.1/24</text>
+<text text-anchor="middle" x="424.12" y="-382.5" font-family="Arial" font-size="10.00">(SCADA Network &#45; Level 2 Control)</text>
+<text text-anchor="middle" x="424.12" y="-358.5" font-family="Arial" font-size="10.00">Zone: Industrial Zone</text>
+<text text-anchor="middle" x="424.12" y="-346.5" font-family="Arial" font-size="10.00">Risk: High</text>
+<text text-anchor="middle" x="424.12" y="-334.5" font-family="Arial" font-size="10.00">Type: Production OT</text>
+</g>
+<!-- firewall&#45;&gt;net_opt1 -->
+<g id="edge1" class="edge">
+<title>firewall&#45;&gt;net_opt1</title>
+<path fill="none" stroke="#666666" stroke-width="2" d="M107.45,-515.92C186.8,-515.92 346.75,-515.92 346.75,-515.92 346.75,-515.92 346.75,-433.89 346.75,-433.89"/>
+<polygon fill="#666666" stroke="#666666" stroke-width="2" points="350.25,-433.89 346.75,-423.89 343.25,-433.89 350.25,-433.89"/>
+<text text-anchor="middle" x="233.12" y="-386.45" font-family="Arial" font-size="9.00">opt1</text>
+<text text-anchor="middle" x="233.12" y="-375.95" font-family="Arial" font-size="9.00">10.100.1.1/24</text>
+</g>
+<!-- net_opt2 -->
+<g id="node7" class="node">
+<title>net_opt2</title>
+<path fill="#c8e6c9" stroke="#2e7d32" stroke-width="2" d="M497.75,-256C497.75,-256 350.5,-256 350.5,-256 344.5,-256 338.5,-250 338.5,-244 338.5,-244 338.5,-176 338.5,-176 338.5,-170 344.5,-164 350.5,-164 350.5,-164 497.75,-164 497.75,-164 503.75,-164 509.75,-170 509.75,-176 509.75,-176 509.75,-244 509.75,-244 509.75,-250 503.75,-256 497.75,-256"/>
+<text text-anchor="middle" x="424.12" y="-242.5" font-family="Arial" font-size="10.00">opt2</text>
+<text text-anchor="middle" x="424.12" y="-230.5" font-family="Arial" font-size="10.00">10.100.2.1/24</text>
+<text text-anchor="middle" x="424.12" y="-218.5" font-family="Arial" font-size="10.00">(HMI Network &#45; Level 1 Operations)</text>
+<text text-anchor="middle" x="424.12" y="-194.5" font-family="Arial" font-size="10.00">Zone: Industrial Zone</text>
+<text text-anchor="middle" x="424.12" y="-182.5" font-family="Arial" font-size="10.00">Risk: High</text>
+<text text-anchor="middle" x="424.12" y="-170.5" font-family="Arial" font-size="10.00">Type: Production OT</text>
+</g>
+<!-- firewall&#45;&gt;net_opt2 -->
+<g id="edge2" class="edge">
+<title>firewall&#45;&gt;net_opt2</title>
+<path fill="none" stroke="#666666" stroke-width="2" d="M77.75,-503.52C77.75,-419.31 77.75,-210 77.75,-210 77.75,-210 324.59,-210 324.59,-210"/>
+<polygon fill="#666666" stroke="#666666" stroke-width="2" points="324.59,-213.5 334.59,-210 324.59,-206.5 324.59,-213.5"/>
+<text text-anchor="middle" x="233.12" y="-222.45" font-family="Arial" font-size="9.00">opt2</text>
+<text text-anchor="middle" x="233.12" y="-211.95" font-family="Arial" font-size="9.00">10.100.2.1/24</text>
+</g>
+<!-- net_opt3 -->
+<g id="node8" class="node">
+<title>net_opt3</title>
+<path fill="#c8e6c9" stroke="#2e7d32" stroke-width="2" d="M481.62,-92C481.62,-92 366.62,-92 366.62,-92 360.62,-92 354.62,-86 354.62,-80 354.62,-80 354.62,-12 354.62,-12 354.62,-6 360.62,0 366.62,0 366.62,0 481.62,0 481.62,0 487.62,0 493.62,-6 493.62,-12 493.62,-12 493.62,-80 493.62,-80 493.62,-86 487.62,-92 481.62,-92"/>
+<text text-anchor="middle" x="424.12" y="-78.5" font-family="Arial" font-size="10.00">opt3</text>
+<text text-anchor="middle" x="424.12" y="-66.5" font-family="Arial" font-size="10.00">10.100.3.1/24</text>
+<text text-anchor="middle" x="424.12" y="-54.5" font-family="Arial" font-size="10.00">(Field Devices &#45; Level 0 I/O)</text>
+<text text-anchor="middle" x="424.12" y="-30.5" font-family="Arial" font-size="10.00">Zone: Industrial Zone</text>
+<text text-anchor="middle" x="424.12" y="-18.5" font-family="Arial" font-size="10.00">Risk: High</text>
+<text text-anchor="middle" x="424.12" y="-6.5" font-family="Arial" font-size="10.00">Type: Production OT</text>
+</g>
+<!-- firewall&#45;&gt;net_opt3 -->
+<g id="edge3" class="edge">
+<title>firewall&#45;&gt;net_opt3</title>
+<path fill="none" stroke="#666666" stroke-width="2" d="M49.75,-503.4C49.75,-391.41 49.75,-46 49.75,-46 49.75,-46 340.68,-46 340.68,-46"/>
+<polygon fill="#666666" stroke="#666666" stroke-width="2" points="340.68,-49.5 350.68,-46 340.68,-42.5 340.68,-49.5"/>
+<text text-anchor="middle" x="233.12" y="-58.45" font-family="Arial" font-size="9.00">opt3</text>
+<text text-anchor="middle" x="233.12" y="-47.95" font-family="Arial" font-size="9.00">10.100.3.1/24</text>
 </g>
 <!-- rules_summary -->
 <g id="node9" class="node">
 <title>rules_summary</title>
-<polygon fill="#fff9c4" stroke="#f57f17" points="121.75,-734.5 0,-734.5 0,-631.5 127.75,-631.5 127.75,-728.5 121.75,-734.5"/>
-<polyline fill="none" stroke="#f57f17" points="121.75,-734.5 121.75,-728.5"/>
-<polyline fill="none" stroke="#f57f17" points="127.75,-728.5 121.75,-728.5"/>
-<text text-anchor="middle" x="63.88" y="-721.95" font-family="Arial" font-size="9.00">🔒 Security Rules Summary</text>
-<text text-anchor="middle" x="63.88" y="-689.95" font-family="Arial" font-size="9.00"> &#160;&#160;&#160;ALLOW: lan → any</text>
-<text text-anchor="middle" x="63.88" y="-679.45" font-family="Arial" font-size="9.00"> &#160;&#160;&#160;ALLOW: opt1 → opt2</text>
-<text text-anchor="middle" x="63.88" y="-668.95" font-family="Arial" font-size="9.00"> &#160;&#160;&#160;ALLOW: opt1 → opt3</text>
-<text text-anchor="middle" x="63.88" y="-658.45" font-family="Arial" font-size="9.00"> &#160;&#160;&#160;ALLOW: opt1 → any</text>
-<text text-anchor="middle" x="63.88" y="-647.95" font-family="Arial" font-size="9.00"> &#160;&#160;&#160;ALLOW: opt2 → any</text>
-<text text-anchor="middle" x="63.88" y="-637.45" font-family="Arial" font-size="9.00"> &#160;&#160;&#160;... and 9 more rules</text>
+<polygon fill="#fff9c4" stroke="#f57f17" points="121.75,-746.5 0,-746.5 0,-643.5 127.75,-643.5 127.75,-740.5 121.75,-746.5"/>
+<polyline fill="none" stroke="#f57f17" points="121.75,-746.5 121.75,-740.5"/>
+<polyline fill="none" stroke="#f57f17" points="127.75,-740.5 121.75,-740.5"/>
+<text text-anchor="middle" x="63.88" y="-733.95" font-family="Arial" font-size="9.00">🔒 Security Rules Summary</text>
+<text text-anchor="middle" x="63.88" y="-701.95" font-family="Arial" font-size="9.00"> &#160;&#160;&#160;ALLOW: lan → any</text>
+<text text-anchor="middle" x="63.88" y="-691.45" font-family="Arial" font-size="9.00"> &#160;&#160;&#160;ALLOW: opt1 → opt2</text>
+<text text-anchor="middle" x="63.88" y="-680.95" font-family="Arial" font-size="9.00"> &#160;&#160;&#160;ALLOW: opt1 → opt3</text>
+<text text-anchor="middle" x="63.88" y="-670.45" font-family="Arial" font-size="9.00"> &#160;&#160;&#160;ALLOW: opt1 → any</text>
+<text text-anchor="middle" x="63.88" y="-659.95" font-family="Arial" font-size="9.00"> &#160;&#160;&#160;ALLOW: opt2 → any</text>
+<text text-anchor="middle" x="63.88" y="-649.45" font-family="Arial" font-size="9.00"> &#160;&#160;&#160;... and 9 more rules</text>
 </g>
 </g>
 </svg>

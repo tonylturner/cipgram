@@ -8,13 +8,13 @@ Total Networks: 7 | Total Policies: 14
 
 📊 NETWORK SEGMENTS
 ───────────────────────────────────────────────────────────────────────────────
+• lan             | 192.168.10.1/24    | Industrial Zone      | High         | Corporate IT
+• opt1            | 10.100.1.1/24      | Industrial Zone      | High         | Production OT
 • opt2            | 10.100.2.1/24      | Industrial Zone      | High         | Production OT
 • opt3            | 10.100.3.1/24      | Industrial Zone      | High         | Production OT
 • opt4            | 10.200.1.1/24      | DMZ Zone             | Medium       | DMZ
 • opt5            | 10.50.1.1/24       | Industrial Zone      | High         | Production OT
 • wan             |                    | DMZ Zone             | Medium       | Internet
-• lan             | 192.168.10.1/24    | Industrial Zone      | High         | Corporate IT
-• opt1            | 10.100.1.1/24      | Industrial Zone      | High         | Production OT
 
 🔒 SECURITY POLICIES
 ───────────────────────────────────────────────────────────────────────────────
@@ -38,15 +38,15 @@ Total Networks: 7 | Total Policies: 14
 ⚠️  RISK ASSESSMENT BY ZONE
 ───────────────────────────────────────────────────────────────────────────────
 • Industrial Zone          : HIGH RISK - Critical OT systems
+  └─ opt2 (10.100.2.1/24)
+  └─ opt3 (10.100.3.1/24)
   └─ opt5 (10.50.1.1/24)
   └─ lan (192.168.10.1/24)
   └─ opt1 (10.100.1.1/24)
-  └─ opt2 (10.100.2.1/24)
-  └─ opt3 (10.100.3.1/24)
 
 • DMZ Zone                 : MEDIUM RISK - Internet exposed
-  └─ wan ()
   └─ opt4 (10.200.1.1/24)
+  └─ wan ()
 
 💡 SEGMENTATION RECOMMENDATIONS
 ───────────────────────────────────────────────────────────────────────────────
@@ -67,19 +67,19 @@ Total Networks: 7 | Total Policies: 14
    → Keep these rules and consider adding logging for monitoring
 
 📋 DETAILED SEGMENTATION IMPROVEMENTS:
-• Industrial Zones (opt2,opt3,opt5,lan,opt1): Restrict to specific MES/Historian/DNS servers
+• Industrial Zones (opt5,lan,opt1,opt2,opt3): Restrict to specific MES/Historian/DNS servers
   - Implement strict protocol controls (Modbus, OPC-UA, EtherNet/IP only)
   - Block internet access except for specific vendor support tunnels
-• DMZ Zones (opt4,wan): Implement strict egress filtering, specific vendor VPN endpoints
+• DMZ Zones (wan,opt4): Implement strict egress filtering, specific vendor VPN endpoints
   - Allow only required external services (NTP, vendor support, updates)
   - Block all lateral movement to internal networks
 • Inter-zone Controls: Current DENY rules are excellent - maintain these!
   - Consider adding logging to monitor blocked traffic patterns
 
 🔍 MONITORING RECOMMENDATIONS:
-• Monitor Industrial Zone (opt2,opt3,opt5,lan,opt1) outbound connections for anomalies
+• Monitor Industrial Zone (opt5,lan,opt1,opt2,opt3) outbound connections for anomalies
 • Set up alerts for unexpected OT protocol usage or destinations
-• Monitor DMZ Zone (opt4,wan) for suspicious inbound/outbound connections
+• Monitor DMZ Zone (wan,opt4) for suspicious inbound/outbound connections
 • Set up alerts for any traffic hitting the implicit default deny rule (∞)
 • Monitor DENY rule hits to validate security policies are working
 • Implement time-based access controls for maintenance windows
