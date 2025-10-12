@@ -29,8 +29,8 @@ func loadMapping(path string) (*types.MappingTable, error) {
 	return &m, nil
 }
 
-// apply applies subnet mapping overrides to a host using proper CIDR matching
-func (m *types.MappingTable) apply(h *types.Host) {
+// ApplyMapping applies subnet mapping overrides to a host using proper CIDR matching
+func ApplyMapping(m *types.MappingTable, h *types.Host) {
 	if m == nil || m.Mappings == nil {
 		return
 	}

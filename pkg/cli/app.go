@@ -296,48 +296,6 @@ func (a *App) runCombinedAnalysis() error {
 	return nil
 }
 
-// runAnalyze executes the analyze command (legacy support)
-func (a *App) runAnalyze() error {
-	// Print startup information
-	fmt.Printf("🎯 CIPgram Analysis - Project: %s\n", a.config.ProjectName)
-
-	// Check Graphviz installation if images are requested
-	if a.config.GenerateImages {
-		checkGraphvizInstallation()
-	}
-
-	// Create output directory structure
-	outputMgr := output.NewOutputManager(a.config.ProjectName)
-	paths, err := outputMgr.CreateProjectStructure()
-	if err != nil {
-		return fmt.Errorf("failed to create output directory: %v", err)
-	}
-
-	fmt.Printf("📁 Output directory: %s\n", paths.ProjectRoot)
-
-	// Set default output paths if not specified
-	if a.config.OutDOT == "" {
-		a.config.OutDOT = fmt.Sprintf("%s/network_diagrams/diagram.dot", paths.ProjectRoot)
-	}
-	if a.config.OutJSON == "" {
-		a.config.OutJSON = fmt.Sprintf("%s/data/diagram.json", paths.ProjectRoot)
-	}
-
-	// Determine analysis type and execute
-	analysisType := a.config.GetAnalysisType()
-
-	switch analysisType {
-	case types.AnalysisTypeCombined:
-		return a.runCombinedAnalysis()
-	case types.AnalysisTypeFirewall:
-		return a.runFirewallAnalysis(paths)
-	case types.AnalysisTypePCAP:
-		return a.runPCAPAnalysisWithPaths(paths)
-	default:
-		return fmt.Errorf("unknown analysis type: %s", analysisType)
-	}
-}
-
 // runFirewallAnalysis performs firewall-only analysis
 func (a *App) runFirewallAnalysis(paths *output.OutputPaths) error {
 	log.Printf("🔧 Firewall Configuration Analysis")
@@ -423,6 +381,14 @@ func (a *App) runPCAPAnalysisWithPaths(paths *output.OutputPaths) error {
 	log.Printf("📊 PCAP Traffic Analysis")
 	log.Printf("📊 PCAP file: %s", a.config.PcapPath)
 	log.Printf("💾 JSON file: %s", a.config.OutJSON)
+
+	// Set default output paths if not specified
+	if a.config.OutDOT == "" {
+		a.config.OutDOT = fmt.Sprintf("%s/network_diagrams/diagram.dot", paths.ProjectRoot)
+	}
+	if a.config.OutJSON == "" {
+		a.config.OutJSON = fmt.Sprintf("%s/data/diagram.json", paths.ProjectRoot)
+	}
 
 	// Show configuration info
 	if a.config.EnableVendorLookup {
@@ -679,12 +645,12 @@ func (a *App) installTabCompletion() error {
 		// Install bash completion
 		bashrcPath := filepath.Join(homeDir, ".bashrc")
 		completionScript = a.generateCompletionScriptForShell("bash")
-		return a.addCompletionToFile(bashrcPath, completionScript, "bash")
+		return a.addCompletionToFile(bashrcPath, completionScript)
 	} else if strings.Contains(userShell, "zsh") {
 		// Install zsh completion
 		zshrcPath := filepath.Join(homeDir, ".zshrc")
 		completionScript = a.generateCompletionScriptForShell("zsh")
-		return a.addCompletionToFile(zshrcPath, completionScript, "zsh")
+		return a.addCompletionToFile(zshrcPath, completionScript)
 	}
 
 	return fmt.Errorf("unsupported shell: %s", userShell)
@@ -795,35 +761,6 @@ func (a *App) removeCompletionFromFile(configFile string) error {
 	return os.WriteFile(configFile, []byte(newContent), 0644)
 }
 
-// generateCompletionScript generates a basic tab completion script
-func (a *App) generateCompletionScript() string {
-	// Get the original user's shell (preserve through sudo)
-	userShell := os.Getenv("SHELL")
-	if userShell == "" || userShell == "/bin/sh" {
-		// When running with sudo, try to get the original user's shell
-		if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
-			// Try to get the user's shell from /etc/passwd
-			cmd := exec.Command("getent", "passwd", sudoUser)
-			if output, err := cmd.Output(); err == nil {
-				fields := strings.Split(strings.TrimSpace(string(output)), ":")
-				if len(fields) >= 7 {
-					userShell = fields[6]
-				}
-			}
-		}
-		// Fallback to bash if we still can't determine
-		if userShell == "" || userShell == "/bin/sh" {
-			userShell = "/bin/bash"
-		}
-	}
-
-	if strings.Contains(userShell, "zsh") {
-		return a.generateCompletionScriptForShell("zsh")
-	} else {
-		return a.generateCompletionScriptForShell("bash")
-	}
-}
-
 // generateCompletionScriptForShell generates a completion script for a specific shell
 func (a *App) generateCompletionScriptForShell(shell string) string {
 	if shell == "zsh" {
@@ -926,7 +863,7 @@ complete -F _cipgram cipgram
 }
 
 // addCompletionToFile adds completion script to shell config file
-func (a *App) addCompletionToFile(configFile, script, shell string) error {
+func (a *App) addCompletionToFile(configFile, script string) error {
 	marker := "# CIPgram"
 
 	// Read existing file content

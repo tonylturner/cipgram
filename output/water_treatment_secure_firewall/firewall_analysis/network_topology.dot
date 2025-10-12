@@ -24,15 +24,6 @@ digraph FirewallTopology {
   ];
 
   // Network Segments
-  net_opt4 [
-    label="opt4\n10.200.1.1/24\n(Historian DMZ)\n\nZone: DMZ Zone\nRisk: Medium\nType: DMZ";
-    shape=box;
-    style="filled,rounded";
-    fillcolor="#ffe0b2";
-    color="#f57c00";
-    penwidth=2;
-    fontsize=10;
-  ];
   net_opt5 [
     label="opt5\n10.50.1.1/24\n(Remote Access VPN)\n\nZone: Industrial Zone\nRisk: High\nType: Production OT";
     shape=box;
@@ -87,20 +78,17 @@ digraph FirewallTopology {
     penwidth=2;
     fontsize=10;
   ];
+  net_opt4 [
+    label="opt4\n10.200.1.1/24\n(Historian DMZ)\n\nZone: DMZ Zone\nRisk: Medium\nType: DMZ";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#ffe0b2";
+    color="#f57c00";
+    penwidth=2;
+    fontsize=10;
+  ];
 
   // Firewall to Network Connections
-  firewall -> net_opt1 [
-    label="opt1\n10.100.1.1/24";
-    fontsize=9;
-    color="#666666";
-    penwidth=2;
-  ];
-  firewall -> net_opt2 [
-    label="opt2\n10.100.2.1/24";
-    fontsize=9;
-    color="#666666";
-    penwidth=2;
-  ];
   firewall -> net_opt3 [
     label="opt3\n10.100.3.1/24";
     fontsize=9;
@@ -127,6 +115,18 @@ digraph FirewallTopology {
   ];
   firewall -> net_lan [
     label="lan\n192.168.10.1/24";
+    fontsize=9;
+    color="#666666";
+    penwidth=2;
+  ];
+  firewall -> net_opt1 [
+    label="opt1\n10.100.1.1/24";
+    fontsize=9;
+    color="#666666";
+    penwidth=2;
+  ];
+  firewall -> net_opt2 [
+    label="opt2\n10.100.2.1/24";
     fontsize=9;
     color="#666666";
     penwidth=2;
