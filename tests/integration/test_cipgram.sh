@@ -11,7 +11,7 @@ echo ""
 
 # Check if the binary exists
 if [ ! -f "./cipgram" ]; then
-    echo "Error: cipgram binary not found. Please run 'go build -o cipgram main.go' first."
+    echo "Error: cipgram binary not found. Please run 'go build -o cipgram cmd/cipgram/main.go' first."
     exit 1
 fi
 

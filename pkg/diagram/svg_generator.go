@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"cipgram/pkg/types"
 )
 
 // ConnectionData represents a connection between two hosts for the diagram
@@ -19,9 +21,9 @@ type ConnectionData struct {
 }
 
 // generatePurdueSVG creates a professional Purdue model diagram using pure SVG
-func generatePurdueSVG(g *Graph, outputDir string) (string, error) {
+func generatePurdueSVG(g *types.Graph, outputDir string, generateImages bool) (string, error) {
 	// Separate hosts by Purdue level
-	var operationsHosts, supervisoryHosts, processHosts []*Host
+	var operationsHosts, supervisoryHosts, processHosts []*types.Host
 
 	for _, host := range g.Hosts {
 		level := determinePurdueLevel(host)
@@ -73,20 +75,23 @@ func generatePurdueSVG(g *Graph, outputDir string) (string, error) {
 		return "", fmt.Errorf("failed to write SVG: %v", err)
 	}
 
-	// Convert SVG to PNG using embedded tools
-	pngPath := filepath.Join(outputDir, "purdue_diagram.png")
-	err = convertSVGToPNGEmbedded(svgPath, pngPath)
-	if err != nil {
-		// If conversion fails, still return the SVG path and log the warning
-		fmt.Printf("Warning: Could not convert SVG to PNG: %v\n", err)
-		return svgPath, nil
+	// Convert SVG to PNG if image generation is enabled
+	if generateImages {
+		pngPath := filepath.Join(outputDir, "purdue_diagram.png")
+		err = convertSVGToPNG(svgPath, pngPath)
+		if err != nil {
+			// If conversion fails, still return the SVG path and log the warning
+			fmt.Printf("Warning: Could not convert SVG to PNG: %v\n", err)
+			return svgPath, nil
+		}
+		return pngPath, nil // Return PNG path as primary output when images enabled
 	}
 
-	return pngPath, nil // Return PNG path as primary output
+	return svgPath, nil // Return SVG path when images disabled
 }
 
 // generatePurdueSVGContent creates the SVG markup for the Purdue diagram
-func generatePurdueSVGContent(operations, supervisory, process []*Host, connections []ConnectionData) string {
+func generatePurdueSVGContent(operations, supervisory, process []*types.Host, connections []ConnectionData) string {
 	const width = 1600
 	const margin = 50
 	const baseHeight = 180 // Base height for level header/title
@@ -166,7 +171,7 @@ func generatePurdueSVGContent(operations, supervisory, process []*Host, connecti
 	currentY := 80
 
 	var levelsToGenerate []struct {
-		hosts    []*Host
+		hosts    []*types.Host
 		id       string
 		title    string
 		subtitle string
@@ -177,7 +182,7 @@ func generatePurdueSVGContent(operations, supervisory, process []*Host, connecti
 
 	if len(operations) > 0 {
 		levelsToGenerate = append(levelsToGenerate, struct {
-			hosts    []*Host
+			hosts    []*types.Host
 			id       string
 			title    string
 			subtitle string
@@ -189,7 +194,7 @@ func generatePurdueSVGContent(operations, supervisory, process []*Host, connecti
 
 	if len(supervisory) > 0 {
 		levelsToGenerate = append(levelsToGenerate, struct {
-			hosts    []*Host
+			hosts    []*types.Host
 			id       string
 			title    string
 			subtitle string
@@ -201,7 +206,7 @@ func generatePurdueSVGContent(operations, supervisory, process []*Host, connecti
 
 	if len(process) > 0 {
 		levelsToGenerate = append(levelsToGenerate, struct {
-			hosts    []*Host
+			hosts    []*types.Host
 			id       string
 			title    string
 			subtitle string
@@ -229,7 +234,7 @@ func generatePurdueSVGContent(operations, supervisory, process []*Host, connecti
 }
 
 // drawPurdueLevel creates SVG for a single Purdue level
-func drawPurdueLevel(levelId, title, subtitle string, hosts []*Host, x, y, w, h int, fill, borderColor string) string {
+func drawPurdueLevel(levelId, title, subtitle string, hosts []*types.Host, x, y, w, h int, fill, borderColor string) string {
 	svg := strings.Builder{}
 
 	// Level background with rounded corners
@@ -275,7 +280,7 @@ func drawPurdueLevel(levelId, title, subtitle string, hosts []*Host, x, y, w, h 
 }
 
 // drawHostCard creates SVG for a single host device card
-func drawHostCard(host *Host, x, y, w, h int) string {
+func drawHostCard(host *types.Host, x, y, w, h int) string {
 	svg := strings.Builder{}
 
 	// Card background
@@ -344,7 +349,7 @@ type DevicePosition struct {
 }
 
 // drawConnections creates SVG for inter-level connections with lines connecting actual devices
-func drawConnections(connections []ConnectionData, operations, supervisory, process []*Host) string {
+func drawConnections(connections []ConnectionData, operations, supervisory, process []*types.Host) string {
 	if len(connections) == 0 {
 		return ""
 	}
@@ -402,7 +407,7 @@ func drawConnections(connections []ConnectionData, operations, supervisory, proc
 }
 
 // calculateDevicePositions calculates the actual screen positions of device cards
-func calculateDevicePositions(operations, supervisory, process []*Host) map[string]DevicePosition {
+func calculateDevicePositions(operations, supervisory, process []*types.Host) map[string]DevicePosition {
 	positions := make(map[string]DevicePosition)
 
 	const cardWidth = 260
@@ -567,7 +572,7 @@ func abs(x int) int {
 }
 
 // Helper functions
-func getDisplayName(host *Host) string {
+func getDisplayName(host *types.Host) string {
 	if host.Hostname != "" {
 		return host.Hostname
 	}
@@ -577,7 +582,7 @@ func getDisplayName(host *Host) string {
 	return "Unknown Device"
 }
 
-func getHostIconColor(host *Host) string {
+func getHostIconColor(host *types.Host) string {
 	class := getHostIconClass(host)
 	switch class {
 	case "icon-db":
@@ -596,7 +601,7 @@ func getHostIconColor(host *Host) string {
 }
 
 // getHostIconClass returns the CSS class for the host icon
-func getHostIconClass(host *Host) string {
+func getHostIconClass(host *types.Host) string {
 	vendor := strings.ToLower(host.Vendor)
 	deviceName := strings.ToLower(host.DeviceName)
 	hostname := strings.ToLower(host.Hostname)
@@ -625,7 +630,7 @@ func getHostIconClass(host *Host) string {
 }
 
 // getHostIconText returns the text for the host icon
-func getHostIconText(host *Host) string {
+func getHostIconText(host *types.Host) string {
 	class := getHostIconClass(host)
 	switch class {
 	case "icon-db":
@@ -663,6 +668,7 @@ func convertSVGToPNG(svgPath, pngPath string) error {
 }
 
 // generatePurdueWithGG replaces the old function name for compatibility
-func generatePurdueWithGG(g *Graph, outputDir string) (string, error) {
-	return generatePurdueSVG(g, outputDir)
+func generatePurdueWithGG(g *types.Graph, outputDir string) (string, error) {
+	// Default to generating images for backward compatibility
+	return generatePurdueSVG(g, outputDir, true)
 }

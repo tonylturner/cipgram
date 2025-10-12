@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"cipgram/internal/parsers/opnsense"
 	"cipgram/internal/writers"
+	"cipgram/pkg/firewall/parsers/opnsense"
 )
 
 func main() {

@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"cipgram/internal/parsers/opnsense"
+	"cipgram/pkg/firewall/parsers/opnsense"
 )
 
 // testOPNsenseParser demonstrates the OPNsense parser with a real config file

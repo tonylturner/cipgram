@@ -6,9 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"cipgram/internal/interfaces"
-	"cipgram/internal/parsers/opnsense"
 	"cipgram/internal/writers"
+	"cipgram/pkg/firewall/parsers/opnsense"
 )
 
 func main() {
@@ -185,7 +184,7 @@ func createMockPCAPModel() *interfaces.NetworkModel {
 			MAC:          "00:0E:8C:12:34:56",
 			DeviceName:   "Rockwell PLC",
 			PurdueLevel:  interfaces.L1,
-			IEC62443Zone: interfaces.ManufacturingZone,
+			IEC62443Zone: interfaces.IndustrialZone,
 			Criticality:  interfaces.CriticalAsset,
 			Exposure:     interfaces.OTOnly,
 			Protocols:    []interfaces.Protocol{"EtherNet/IP", "Modbus TCP"},
@@ -196,7 +195,7 @@ func createMockPCAPModel() *interfaces.NetworkModel {
 			MAC:          "08:00:06:AA:BB:CC",
 			DeviceName:   "Siemens HMI",
 			PurdueLevel:  interfaces.L2,
-			IEC62443Zone: interfaces.ManufacturingZone,
+			IEC62443Zone: interfaces.IndustrialZone,
 			Criticality:  interfaces.HighAsset,
 			Exposure:     interfaces.OTOnly,
 			Protocols:    []interfaces.Protocol{"S7Comm", "OPC-UA"},
@@ -224,7 +223,7 @@ func createMockPCAPModel() *interfaces.NetworkModel {
 		ID:      "production_lan",
 		CIDR:    "192.168.1.0/24",
 		Name:    "Production LAN",
-		Zone:    interfaces.ManufacturingZone,
+		Zone:    interfaces.IndustrialZone,
 		Risk:    interfaces.HighRisk,
 		Purpose: "Industrial Control",
 		Assets:  []*interfaces.Asset{assets[0], assets[1]},

@@ -33,11 +33,11 @@ func getEmbeddedDotPath() (string, error) {
 	return "", fmt.Errorf("dot binary not found - will be embedded in future version")
 }
 
-// convertSVGToPNGEmbedded converts SVG to PNG using embedded tools
-func convertSVGToPNGEmbedded(svgPath, pngPath string) error {
+// ConvertSVGToPNGEmbedded converts SVG to PNG using embedded tools
+func ConvertSVGToPNGEmbedded(svgPath, pngPath string) error {
 	// Try embedded rsvg-convert first (will be implemented)
 	// For now, fall back to system tools
-	return convertSVGToPNG(svgPath, pngPath)
+	return fmt.Errorf("convertSVGToPNG not implemented in this package - use pkg/diagram instead")
 }
 
 // generateImageEmbedded generates images using embedded Graphviz

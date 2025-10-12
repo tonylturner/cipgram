@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"cipgram/pkg/types"
 )
 
 // DiagramType represents different diagram layouts
@@ -19,7 +21,7 @@ const (
 	NetworkDiagram DiagramType = "network"
 )
 
-func writeDOT(g *Graph, path string, diagramType DiagramType) error {
+func writeDOT(g *types.Graph, path string, diagramType DiagramType) error {
 	switch diagramType {
 	case NetworkDiagram:
 		return writeNetworkDOT(g, path)
@@ -29,7 +31,7 @@ func writeDOT(g *Graph, path string, diagramType DiagramType) error {
 }
 
 // writePurdueDOT creates a professional system-level Purdue model diagram for functional modeling
-func writePurdueDOT(g *Graph, path string) error {
+func writePurdueDOT(g *types.Graph, path string) error {
 	// Group devices into functional systems instead of individual nodes
 	systems := groupDevicesIntoSystems(g)
 
@@ -88,13 +90,13 @@ func writePurdueDOT(g *Graph, path string) error {
 }
 
 // writeNetworkDOT creates a network segmentation diagram for OT planning
-func writeNetworkDOT(g *Graph, path string) error {
+func writeNetworkDOT(g *types.Graph, path string) error {
 	// Create hierarchical network diagram similar to traditional topology
 	return writeHierarchicalNetworkDOT(g, path)
 }
 
 // writeHierarchicalNetworkDOT creates a traditional hierarchical network diagram
-func writeHierarchicalNetworkDOT(g *Graph, path string) error {
+func writeHierarchicalNetworkDOT(g *types.Graph, path string) error {
 	file, err := os.Create(path)
 	if err != nil {
 		return err
@@ -124,7 +126,7 @@ func writeHierarchicalNetworkDOT(g *Graph, path string) error {
 }
 
 // writeHierarchicalLayers creates a traditional network hierarchy
-func writeHierarchicalLayers(w *bufio.Writer, g *Graph) {
+func writeHierarchicalLayers(w *bufio.Writer, g *types.Graph) {
 	// Layer 1: Internet
 	fmt.Fprintln(w, "  // Layer 1: Internet")
 	fmt.Fprintln(w, "  subgraph cluster_internet {")
@@ -249,7 +251,7 @@ func classifyNetworkLayers(segments []NetworkSegment) (core, aggregation, access
 }
 
 // hasServerDevices checks if segment contains server-like devices
-func hasServerDevices(hosts []*Host) bool {
+func hasServerDevices(hosts []*types.Host) bool {
 	for _, host := range hosts {
 		for _, role := range host.Roles {
 			if strings.Contains(strings.ToLower(role), "server") ||
@@ -262,9 +264,9 @@ func hasServerDevices(hosts []*Host) bool {
 }
 
 // hasOTDevices checks if segment contains OT/industrial devices
-func hasOTDevices(hosts []*Host) bool {
+func hasOTDevices(hosts []*types.Host) bool {
 	for _, host := range hosts {
-		if host.ICSScore > 0 || host.InferredLevel != Unknown {
+		if host.ICSScore > 0 || host.InferredLevel != types.Unknown {
 			return true
 		}
 	}
@@ -395,7 +397,7 @@ func writeHierarchicalNetworkConnections(w *bufio.Writer, core, aggregation, acc
 
 				// Check if this device belongs to current network segment
 				if deviceBelongsToNetwork(device.IP, segment.CIDR) {
-					fmt.Fprintf(w, "  %s -> device_%d [label=\"L2\"];\n", networkID, deviceCount)
+					fmt.Fprintf(w, "  %s -> device_%d [label=\"types.L2\"];\n", networkID, deviceCount)
 				}
 				deviceCount++
 			}
@@ -422,7 +424,7 @@ func deviceBelongsToNetwork(ip, cidr string) bool {
 }
 
 // buildFullIPDeviceLabel creates a label with full IP address for devices
-func buildFullIPDeviceLabel(host *Host) string {
+func buildFullIPDeviceLabel(host *types.Host) string {
 	var parts []string
 
 	// Full IP address (not truncated)
@@ -447,14 +449,14 @@ func buildFullIPDeviceLabel(host *Host) string {
 }
 
 // getKeyDevicesFromSegment returns the most important devices from a segment
-func getKeyDevicesFromSegment(hosts []*Host, maxDevices int) []*Host {
+func getKeyDevicesFromSegment(hosts []*types.Host, maxDevices int) []*types.Host {
 	// Return ALL devices if we have few enough, don't artificially limit for small networks
 	if len(hosts) <= 10 { // Increased from maxDevices to show more assets
 		return hosts
 	}
 
 	// Sort by importance (ICS score, roles, etc.)
-	sortedHosts := make([]*Host, len(hosts))
+	sortedHosts := make([]*types.Host, len(hosts))
 	copy(sortedHosts, hosts)
 
 	sort.Slice(sortedHosts, func(i, j int) bool {
@@ -473,7 +475,7 @@ func getKeyDevicesFromSegment(hosts []*Host, maxDevices int) []*Host {
 }
 
 // getDeviceAppearance returns shape and color for a device based on its characteristics
-func getDeviceAppearance(host *Host) (shape, color string) {
+func getDeviceAppearance(host *types.Host) (shape, color string) {
 	// Check for specific vendors/devices
 	vendor := strings.ToLower(host.Vendor)
 	if strings.Contains(vendor, "cisco") {
@@ -499,11 +501,11 @@ func getDeviceAppearance(host *Host) (shape, color string) {
 
 	// Default based on Purdue level
 	switch host.InferredLevel {
-	case L1:
+	case types.L1:
 		return "box", "#ccffcc"
-	case L2:
+	case types.L2:
 		return "ellipse", "#ffcccc"
-	case L3:
+	case types.L3:
 		return "diamond", "#ccccff"
 	default:
 		return "circle", "#f0f0f0"
@@ -511,7 +513,7 @@ func getDeviceAppearance(host *Host) (shape, color string) {
 }
 
 // buildHierarchicalDeviceLabel creates a label for devices in the hierarchical view
-func buildHierarchicalDeviceLabel(host *Host) string {
+func buildHierarchicalDeviceLabel(host *types.Host) string {
 	var parts []string
 
 	// IP address (last octet for space)
@@ -541,7 +543,7 @@ func buildHierarchicalDeviceLabel(host *Host) string {
 }
 
 // buildAssetLabel creates comprehensive asset labels with full IP and MAC
-func buildAssetLabel(host *Host, fullDetails bool) string {
+func buildAssetLabel(host *types.Host, fullDetails bool) string {
 	var parts []string
 
 	// Primary identifier
@@ -586,7 +588,7 @@ func buildAssetLabel(host *Host, fullDetails bool) string {
 }
 
 // writeFunctionalFlows writes protocol flows for functional modeling
-func writeFunctionalFlows(w *bufio.Writer, g *Graph) {
+func writeFunctionalFlows(w *bufio.Writer, g *types.Graph) {
 	fmt.Fprintln(w, "  // Functional Protocol Flows")
 
 	processedPairs := make(map[string]bool)
@@ -596,7 +598,7 @@ func writeFunctionalFlows(w *bufio.Writer, g *Graph) {
 		dstHost := g.Hosts[e.Dst]
 
 		// Skip unknown devices in Purdue diagram
-		if srcHost.InferredLevel == Unknown || dstHost.InferredLevel == Unknown {
+		if srcHost.InferredLevel == types.Unknown || dstHost.InferredLevel == types.Unknown {
 			continue
 		}
 
@@ -659,7 +661,7 @@ type PurdueSystemLevel struct {
 type SystemGroup struct {
 	Name    string
 	Type    string
-	Devices []*Host
+	Devices []*types.Host
 	Color   string
 	Icon    string
 }
@@ -673,7 +675,7 @@ func (level *PurdueSystemLevel) HasSystems() bool {
 }
 
 // groupDevicesIntoSystems analyzes the network and groups devices into functional systems
-func groupDevicesIntoSystems(g *Graph) SystemGroups {
+func groupDevicesIntoSystems(g *types.Graph) SystemGroups {
 	systems := SystemGroups{}
 
 	for _, host := range g.Hosts {
@@ -700,7 +702,7 @@ func groupDevicesIntoSystems(g *Graph) SystemGroups {
 }
 
 // classifySystemType determines what type of system a device represents
-func classifySystemType(host *Host) SystemGroup {
+func classifySystemType(host *types.Host) SystemGroup {
 	vendor := strings.ToLower(host.Vendor)
 	deviceName := strings.ToLower(host.DeviceName)
 	hostname := strings.ToLower(host.Hostname)
@@ -711,7 +713,7 @@ func classifySystemType(host *Host) SystemGroup {
 		return SystemGroup{
 			Name:    "SQL Database",
 			Type:    "database",
-			Devices: []*Host{host},
+			Devices: []*types.Host{host},
 			Color:   "#f0f8ff",
 			Icon:    "database",
 		}
@@ -723,7 +725,7 @@ func classifySystemType(host *Host) SystemGroup {
 		return SystemGroup{
 			Name:    "HMI Client",
 			Type:    "client",
-			Devices: []*Host{host},
+			Devices: []*types.Host{host},
 			Color:   "#fff8e1",
 			Icon:    "desktop",
 		}
@@ -735,7 +737,7 @@ func classifySystemType(host *Host) SystemGroup {
 		return SystemGroup{
 			Name:    "Ignition Server",
 			Type:    "server",
-			Devices: []*Host{host},
+			Devices: []*types.Host{host},
 			Color:   "#e8f5e8",
 			Icon:    "server",
 		}
@@ -747,7 +749,7 @@ func classifySystemType(host *Host) SystemGroup {
 		return SystemGroup{
 			Name:    "Allen-Bradley PLC",
 			Type:    "controller",
-			Devices: []*Host{host},
+			Devices: []*types.Host{host},
 			Color:   "#fff3e0",
 			Icon:    "controller",
 		}
@@ -759,7 +761,7 @@ func classifySystemType(host *Host) SystemGroup {
 		return SystemGroup{
 			Name:    "Industrial Gateway",
 			Type:    "gateway",
-			Devices: []*Host{host},
+			Devices: []*types.Host{host},
 			Color:   "#e3f2fd",
 			Icon:    "router",
 		}
@@ -769,21 +771,21 @@ func classifySystemType(host *Host) SystemGroup {
 	return SystemGroup{
 		Name:    "Field Device",
 		Type:    "field",
-		Devices: []*Host{host},
+		Devices: []*types.Host{host},
 		Color:   "#f9f9f9",
 		Icon:    "device",
 	}
 }
 
 // determinePurdueLevel maps a host to the appropriate Purdue level
-func determinePurdueLevel(host *Host) string {
+func determinePurdueLevel(host *types.Host) string {
 	// Use existing classification if available
 	switch host.InferredLevel {
-	case L3:
+	case types.L3:
 		return "Operations"
-	case L2:
+	case types.L2:
 		return "Supervisory"
-	case L1:
+	case types.L1:
 		return "ProcessControl"
 	default:
 		// Enhanced classification based on vendor and role
@@ -988,7 +990,7 @@ func writeNetworkSeparations(w *bufio.Writer, systems *SystemGroups) {
 }
 
 // writeSystemConnections draws logical connections between systems
-func writeSystemConnections(w *bufio.Writer, g *Graph, systems *SystemGroups) {
+func writeSystemConnections(w *bufio.Writer, g *types.Graph, systems *SystemGroups) {
 	fmt.Fprintln(w, "  // System Connections")
 
 	// For now, keep simplified protocol connections
@@ -1000,7 +1002,7 @@ func writeSystemConnections(w *bufio.Writer, g *Graph, systems *SystemGroups) {
 		dstHost := g.Hosts[e.Dst]
 
 		// Skip unknown devices
-		if srcHost.InferredLevel == Unknown || dstHost.InferredLevel == Unknown {
+		if srcHost.InferredLevel == types.Unknown || dstHost.InferredLevel == types.Unknown {
 			continue
 		}
 
@@ -1045,13 +1047,13 @@ func writeSystemConnections(w *bufio.Writer, g *Graph, systems *SystemGroups) {
 }
 
 // mapHostToLevelName maps a host to its level name for connections
-func mapHostToLevelName(host *Host) string {
+func mapHostToLevelName(host *types.Host) string {
 	switch host.InferredLevel {
-	case L3:
+	case types.L3:
 		return "operations"
-	case L2:
+	case types.L2:
 		return "supervisory"
-	case L1:
+	case types.L1:
 		return "process"
 	default:
 		return ""
@@ -1076,13 +1078,13 @@ func writeVerticalOrdering(w *bufio.Writer, systems *SystemGroups) {
 // Network identification and segmentation structures
 type NetworkSegment struct {
 	CIDR  string
-	Hosts []*Host
+	Hosts []*types.Host
 	Type  string // "OT", "IT", "DMZ"
-	Level PurdueLevel
+	Level types.PurdueLevel
 }
 
 // identifyNetworks groups hosts into network segments (IPv4 only, valid networks)
-func identifyNetworks(g *Graph) []NetworkSegment {
+func identifyNetworks(g *types.Graph) []NetworkSegment {
 	networks := make(map[string]*NetworkSegment)
 
 	for _, host := range g.Hosts {
@@ -1099,7 +1101,7 @@ func identifyNetworks(g *Graph) []NetworkSegment {
 		if networks[cidr] == nil {
 			networks[cidr] = &NetworkSegment{
 				CIDR:  cidr,
-				Hosts: []*Host{},
+				Hosts: []*types.Host{},
 				Type:  "",
 			}
 		}
@@ -1142,14 +1144,14 @@ func isExternalIP(ip string) bool {
 }
 
 // classifyNetworkType determines if a network is OT, IT, or Mixed based on all hosts
-func classifyNetworkType(hosts []*Host) string {
+func classifyNetworkType(hosts []*types.Host) string {
 	otCount := 0
 	itCount := 0
 
 	for _, host := range hosts {
-		if host.ICSScore > 0 || host.InferredLevel == L1 || host.InferredLevel == L2 {
+		if host.ICSScore > 0 || host.InferredLevel == types.L1 || host.InferredLevel == types.L2 {
 			otCount++
-		} else if host.ITScore > 0 || host.InferredLevel == L3 {
+		} else if host.ITScore > 0 || host.InferredLevel == types.L3 {
 			itCount++
 		}
 	}
@@ -1167,8 +1169,8 @@ func classifyNetworkType(hosts []*Host) string {
 }
 
 // inferNetworkPurdueLevel determines the dominant Purdue level for a network
-func inferNetworkPurdueLevel(hosts []*Host) PurdueLevel {
-	levelCounts := make(map[PurdueLevel]int)
+func inferNetworkPurdueLevel(hosts []*types.Host) types.PurdueLevel {
+	levelCounts := make(map[types.PurdueLevel]int)
 
 	for _, host := range hosts {
 		levelCounts[host.InferredLevel]++
@@ -1176,9 +1178,9 @@ func inferNetworkPurdueLevel(hosts []*Host) PurdueLevel {
 
 	// Find the most common level
 	maxCount := 0
-	dominantLevel := Unknown
+	dominantLevel := types.Unknown
 	for level, count := range levelCounts {
-		if count > maxCount && level != Unknown {
+		if count > maxCount && level != types.Unknown {
 			maxCount = count
 			dominantLevel = level
 		}
@@ -1202,7 +1204,7 @@ func writeShapeLegend(w *bufio.Writer) {
 	fmt.Fprintln(w, "    legend_field [label=\"Field Device\", shape=box, style=filled, fillcolor=\"#ccffcc\"];")
 	fmt.Fprintln(w, "    legend_control [label=\"Control Device\", shape=ellipse, style=filled, fillcolor=\"#ffcccc\"];")
 	fmt.Fprintln(w, "    legend_network [label=\"Network Device\", shape=diamond, style=filled, fillcolor=\"#ccccff\"];")
-	fmt.Fprintln(w, "    legend_unknown [label=\"Unknown Device\", shape=circle, style=filled, fillcolor=\"#f0f0f0\"];")
+	fmt.Fprintln(w, "    legend_unknown [label=\"types.Unknown Device\", shape=circle, style=filled, fillcolor=\"#f0f0f0\"];")
 	fmt.Fprintln(w, "  }")
 }
 
@@ -1263,7 +1265,7 @@ func inferNetworkCIDR(ip string) string {
 }
 
 // writeNetworkSegment writes a network segment for segmentation planning
-func writeNetworkSegment(w *bufio.Writer, network NetworkSegment, g *Graph) {
+func writeNetworkSegment(w *bufio.Writer, network NetworkSegment, g *types.Graph) {
 	segmentID := strings.ReplaceAll(network.CIDR, ".", "_")
 	segmentID = strings.ReplaceAll(segmentID, "/", "_")
 	segmentID = strings.ReplaceAll(segmentID, ":", "_") // Fix IPv6 addresses
@@ -1307,8 +1309,8 @@ func writeNetworkSegment(w *bufio.Writer, network NetworkSegment, g *Graph) {
 	fmt.Fprintln(w, "  }")
 }
 
-// writeHorizontalNetworkSegment writes network segments in horizontal layout with L2 detection
-func writeHorizontalNetworkSegment(w *bufio.Writer, network NetworkSegment, g *Graph, index int, moxaDevice *Host) {
+// writeHorizontalNetworkSegment writes network segments in horizontal layout with types.L2 detection
+func writeHorizontalNetworkSegment(w *bufio.Writer, network NetworkSegment, g *types.Graph, index int, moxaDevice *types.Host) {
 	segmentID := strings.ReplaceAll(network.CIDR, ".", "_")
 	segmentID = strings.ReplaceAll(segmentID, "/", "_")
 	segmentID = strings.ReplaceAll(segmentID, ":", "_")
@@ -1340,7 +1342,7 @@ func writeHorizontalNetworkSegment(w *bufio.Writer, network NetworkSegment, g *G
 		nodeID, network.CIDR, bgColor)
 
 	// Identify Layer 2 devices and regular devices
-	var l2Devices, regularDevices []*Host
+	var l2Devices, regularDevices []*types.Host
 	for _, host := range network.Hosts {
 		vendor := strings.ToLower(host.Vendor)
 		deviceName := strings.ToLower(host.DeviceName)
@@ -1357,7 +1359,7 @@ func writeHorizontalNetworkSegment(w *bufio.Writer, network NetworkSegment, g *G
 		}
 	}
 
-	// Add Layer 2 segment if L2 devices exist
+	// Add Layer 2 segment if types.L2 devices exist
 	if len(l2Devices) > 0 {
 		fmt.Fprintf(w, "    subgraph cluster_%s_l2 {\n", segmentID)
 		fmt.Fprintln(w, "      label=\"Layer 2 Infrastructure\";")
@@ -1401,7 +1403,7 @@ func writeHorizontalNetworkSegment(w *bufio.Writer, network NetworkSegment, g *G
 }
 
 // buildNetworkAssetLabel creates labels for network view with device highlighting
-func buildNetworkAssetLabel(host *Host, moxaDevice *Host) string {
+func buildNetworkAssetLabel(host *types.Host, moxaDevice *types.Host) string {
 	var parts []string
 
 	// Device identification
@@ -1436,10 +1438,10 @@ func buildNetworkAssetLabel(host *Host, moxaDevice *Host) string {
 }
 
 // getKeyNetworkHosts returns the most important hosts for network view
-func getKeyNetworkHosts(hosts []*Host) []*Host {
+func getKeyNetworkHosts(hosts []*types.Host) []*types.Host {
 	// Sort by importance (ICS score + role significance)
 	type hostScore struct {
-		host  *Host
+		host  *types.Host
 		score int
 	}
 
@@ -1461,7 +1463,7 @@ func getKeyNetworkHosts(hosts []*Host) []*Host {
 	})
 
 	// Return top 5 hosts per network
-	var result []*Host
+	var result []*types.Host
 	limit := 5
 	if len(scored) < limit {
 		limit = len(scored)
@@ -1474,10 +1476,10 @@ func getKeyNetworkHosts(hosts []*Host) []*Host {
 	return result
 }
 
-func writeJSON(g *Graph, path string) error {
+func writeJSON(g *types.Graph, path string) error {
 	out := struct {
-		Hosts map[string]*Host `json:"hosts"`
-		Edges []*Edge          `json:"edges"`
+		Hosts map[string]*types.Host `json:"hosts"`
+		Edges []*types.Edge          `json:"edges"`
 	}{
 		Hosts: g.Hosts,
 	}

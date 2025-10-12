@@ -5,13 +5,15 @@ import (
 	"net"
 	"os"
 
+	"cipgram/pkg/types"
+
 	"gopkg.in/yaml.v3"
 )
 
 // loadMapping loads YAML configuration
-func loadMapping(path string) (*MappingTable, error) {
+func loadMapping(path string) (*types.MappingTable, error) {
 	if path == "" {
-		return &MappingTable{}, nil
+		return &types.MappingTable{}, nil
 	}
 
 	data, err := os.ReadFile(path)
@@ -19,7 +21,7 @@ func loadMapping(path string) (*MappingTable, error) {
 		return nil, fmt.Errorf("read config: %v", err)
 	}
 
-	var m MappingTable
+	var m types.MappingTable
 	if err := yaml.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("parse YAML: %v", err)
 	}
@@ -28,7 +30,7 @@ func loadMapping(path string) (*MappingTable, error) {
 }
 
 // apply applies subnet mapping overrides to a host using proper CIDR matching
-func (m *MappingTable) apply(h *Host) {
+func (m *types.MappingTable) apply(h *types.Host) {
 	if m == nil || m.Mappings == nil {
 		return
 	}

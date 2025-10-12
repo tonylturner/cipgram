@@ -7,20 +7,20 @@ import (
 	"strings"
 	"time"
 
-	"cipgram/internal/interfaces"
+	"cipgram/pkg/types"
 )
 
 // CombinedAnalyzer performs advanced analysis by combining multiple input sources
 type CombinedAnalyzer struct {
-	sources []interfaces.InputSource
-	models  []*interfaces.NetworkModel
+	sources []types.InputSource
+	models  []*types.NetworkModel
 }
 
 // NewCombinedAnalyzer creates a new combined analyzer
-func NewCombinedAnalyzer(sources ...interfaces.InputSource) *CombinedAnalyzer {
+func NewCombinedAnalyzer(sources ...types.InputSource) *CombinedAnalyzer {
 	return &CombinedAnalyzer{
 		sources: sources,
-		models:  make([]*interfaces.NetworkModel, 0, len(sources)),
+		models:  make([]*types.NetworkModel, 0, len(sources)),
 	}
 }
 
@@ -41,18 +41,18 @@ func (c *CombinedAnalyzer) ParseAllSources() error {
 }
 
 // GenerateCombinedModel creates a unified model from all sources
-func (c *CombinedAnalyzer) GenerateCombinedModel() (*interfaces.NetworkModel, error) {
+func (c *CombinedAnalyzer) GenerateCombinedModel() (*types.NetworkModel, error) {
 	if len(c.models) == 0 {
 		return nil, fmt.Errorf("no models to combine - call ParseAllSources first")
 	}
 
 	// Start with the first model as base
-	combined := &interfaces.NetworkModel{
-		Assets:   make(map[string]*interfaces.Asset),
-		Networks: make(map[string]*interfaces.NetworkSegment),
-		Flows:    make(map[interfaces.FlowKey]*interfaces.Flow),
-		Policies: []*interfaces.SecurityPolicy{},
-		Metadata: interfaces.InputMetadata{
+	combined := &types.NetworkModel{
+		Assets:   make(map[string]*types.Asset),
+		Networks: make(map[string]*types.NetworkSegment),
+		Flows:    make(map[types.FlowKey]*types.Flow),
+		Policies: []*types.SecurityPolicy{},
+		Metadata: types.InputMetadata{
 			Source:    "Combined Analysis",
 			Type:      "combined",
 			Timestamp: time.Now(),
@@ -62,9 +62,9 @@ func (c *CombinedAnalyzer) GenerateCombinedModel() (*interfaces.NetworkModel, er
 	// Combine all models
 	for _, model := range c.models {
 		switch model.Metadata.Type {
-		case interfaces.InputTypePCAP:
+		case types.InputTypePCAP:
 			c.integratePCAPModel(combined, model)
-		case interfaces.InputTypeOPNsense:
+		case types.InputTypeOPNsense:
 			c.integrateFirewallModel(combined, model)
 		default:
 			log.Printf("Warning: Unknown model type: %s", model.Metadata.Type)
@@ -79,7 +79,7 @@ func (c *CombinedAnalyzer) GenerateCombinedModel() (*interfaces.NetworkModel, er
 }
 
 // integratePCAPModel integrates PCAP data into the combined model
-func (c *CombinedAnalyzer) integratePCAPModel(combined *interfaces.NetworkModel, pcapModel *interfaces.NetworkModel) {
+func (c *CombinedAnalyzer) integratePCAPModel(combined *types.NetworkModel, pcapModel *types.NetworkModel) {
 	log.Printf("Integrating PCAP model: %d assets, %d flows", len(pcapModel.Assets), len(pcapModel.Flows))
 
 	// Merge assets (PCAP provides actual traffic data)
@@ -111,7 +111,7 @@ func (c *CombinedAnalyzer) integratePCAPModel(combined *interfaces.NetworkModel,
 }
 
 // integrateFirewallModel integrates firewall configuration data
-func (c *CombinedAnalyzer) integrateFirewallModel(combined *interfaces.NetworkModel, fwModel *interfaces.NetworkModel) {
+func (c *CombinedAnalyzer) integrateFirewallModel(combined *types.NetworkModel, fwModel *types.NetworkModel) {
 	log.Printf("Integrating firewall model: %d networks, %d policies", len(fwModel.Networks), len(fwModel.Policies))
 
 	// Networks from firewall are authoritative for topology
@@ -133,14 +133,14 @@ func (c *CombinedAnalyzer) integrateFirewallModel(combined *interfaces.NetworkMo
 			// Create representative asset for this network if no traffic seen
 			assetID := fmt.Sprintf("network_%s", network.ID)
 			if _, exists := combined.Assets[assetID]; !exists {
-				combined.Assets[assetID] = &interfaces.Asset{
+				combined.Assets[assetID] = &types.Asset{
 					ID:           assetID,
 					IP:           c.extractNetworkIP(network.CIDR),
 					DeviceName:   fmt.Sprintf("%s Gateway", network.Name),
 					IEC62443Zone: network.Zone,
 					Criticality:  c.mapRiskToCriticality(network.Risk),
 					Exposure:     c.inferExposureFromZone(network.Zone),
-					Protocols:    []interfaces.Protocol{},
+					Protocols:    []types.Protocol{},
 				}
 			}
 		}
@@ -148,7 +148,7 @@ func (c *CombinedAnalyzer) integrateFirewallModel(combined *interfaces.NetworkMo
 }
 
 // reconcileModels resolves conflicts between data sources
-func (c *CombinedAnalyzer) reconcileModels(combined *interfaces.NetworkModel) {
+func (c *CombinedAnalyzer) reconcileModels(combined *types.NetworkModel) {
 	log.Printf("Reconciling combined model...")
 
 	// Reconcile asset assignments to networks
@@ -168,14 +168,14 @@ func (c *CombinedAnalyzer) reconcileModels(combined *interfaces.NetworkModel) {
 }
 
 // validateFlowsAgainstPolicies marks flows as allowed/denied based on policies
-func (c *CombinedAnalyzer) validateFlowsAgainstPolicies(model *interfaces.NetworkModel) {
+func (c *CombinedAnalyzer) validateFlowsAgainstPolicies(model *types.NetworkModel) {
 	for _, flow := range model.Flows {
 		flow.Allowed = c.isFlowAllowedByPolicies(flow, model.Policies)
 	}
 }
 
 // performAdvancedAnalysis performs analysis only possible with combined data
-func (c *CombinedAnalyzer) performAdvancedAnalysis(combined *interfaces.NetworkModel) {
+func (c *CombinedAnalyzer) performAdvancedAnalysis(combined *types.NetworkModel) {
 	log.Printf("Performing advanced combined analysis...")
 
 	// Identify policy violations
@@ -196,7 +196,7 @@ func (c *CombinedAnalyzer) performAdvancedAnalysis(combined *interfaces.NetworkM
 // Advanced analysis functions
 
 // identifyPolicyViolations finds traffic that violates firewall policies
-func (c *CombinedAnalyzer) identifyPolicyViolations(model *interfaces.NetworkModel) []PolicyViolation {
+func (c *CombinedAnalyzer) identifyPolicyViolations(model *types.NetworkModel) []PolicyViolation {
 	violations := []PolicyViolation{}
 
 	for _, flow := range model.Flows {
@@ -214,7 +214,7 @@ func (c *CombinedAnalyzer) identifyPolicyViolations(model *interfaces.NetworkMod
 }
 
 // identifySegmentationOpportunities finds areas for improved segmentation
-func (c *CombinedAnalyzer) identifySegmentationOpportunities(model *interfaces.NetworkModel) []SegmentationOpportunity {
+func (c *CombinedAnalyzer) identifySegmentationOpportunities(model *types.NetworkModel) []SegmentationOpportunity {
 	opportunities := []SegmentationOpportunity{}
 
 	// Look for cross-zone traffic that might need better controls
@@ -241,12 +241,12 @@ func (c *CombinedAnalyzer) identifySegmentationOpportunities(model *interfaces.N
 }
 
 // assessSecurityPosture compares actual traffic with configured policies
-func (c *CombinedAnalyzer) assessSecurityPosture(model *interfaces.NetworkModel) SecurityPosture {
+func (c *CombinedAnalyzer) assessSecurityPosture(model *types.NetworkModel) SecurityPosture {
 	posture := SecurityPosture{
 		TotalFlows:      len(model.Flows),
 		PolicyCount:     len(model.Policies),
 		ComplianceScore: 0.0,
-		RiskLevel:       interfaces.MediumRisk,
+		RiskLevel:       types.MediumRisk,
 	}
 
 	// Calculate compliance score based on policy coverage
@@ -263,9 +263,9 @@ func (c *CombinedAnalyzer) assessSecurityPosture(model *interfaces.NetworkModel)
 
 	// Assess overall risk
 	if posture.ComplianceScore > 90 {
-		posture.RiskLevel = interfaces.LowRisk
+		posture.RiskLevel = types.LowRisk
 	} else if posture.ComplianceScore < 70 {
-		posture.RiskLevel = interfaces.HighRisk
+		posture.RiskLevel = types.HighRisk
 	}
 
 	log.Printf("Security posture: %.1f%% compliance, %s risk", posture.ComplianceScore, posture.RiskLevel)
@@ -274,7 +274,7 @@ func (c *CombinedAnalyzer) assessSecurityPosture(model *interfaces.NetworkModel)
 
 // Helper functions
 
-func (c *CombinedAnalyzer) mergeAssets(target, source *interfaces.Asset) {
+func (c *CombinedAnalyzer) mergeAssets(target, source *types.Asset) {
 	// Merge protocols
 	for _, proto := range source.Protocols {
 		target.Protocols = c.addProtocolIfNotExists(target.Protocols, proto)
@@ -289,12 +289,12 @@ func (c *CombinedAnalyzer) mergeAssets(target, source *interfaces.Asset) {
 	}
 
 	// Keep the more specific classification
-	if source.PurdueLevel != interfaces.Unknown && target.PurdueLevel == interfaces.Unknown {
+	if source.PurdueLevel != types.Unknown && target.PurdueLevel == types.Unknown {
 		target.PurdueLevel = source.PurdueLevel
 	}
 }
 
-func (c *CombinedAnalyzer) mergeNetworks(target, source *interfaces.NetworkSegment) {
+func (c *CombinedAnalyzer) mergeNetworks(target, source *types.NetworkSegment) {
 	// Merge assets
 	for _, asset := range source.Assets {
 		target.Assets = c.addAssetIfNotExists(target.Assets, asset)
@@ -309,7 +309,7 @@ func (c *CombinedAnalyzer) mergeNetworks(target, source *interfaces.NetworkSegme
 	}
 }
 
-func (c *CombinedAnalyzer) addProtocolIfNotExists(protocols []interfaces.Protocol, proto interfaces.Protocol) []interfaces.Protocol {
+func (c *CombinedAnalyzer) addProtocolIfNotExists(protocols []types.Protocol, proto types.Protocol) []types.Protocol {
 	for _, existing := range protocols {
 		if existing == proto {
 			return protocols
@@ -318,7 +318,7 @@ func (c *CombinedAnalyzer) addProtocolIfNotExists(protocols []interfaces.Protoco
 	return append(protocols, proto)
 }
 
-func (c *CombinedAnalyzer) addAssetIfNotExists(assets []*interfaces.Asset, asset *interfaces.Asset) []*interfaces.Asset {
+func (c *CombinedAnalyzer) addAssetIfNotExists(assets []*types.Asset, asset *types.Asset) []*types.Asset {
 	for _, existing := range assets {
 		if existing.ID == asset.ID {
 			return assets
@@ -327,7 +327,7 @@ func (c *CombinedAnalyzer) addAssetIfNotExists(assets []*interfaces.Asset, asset
 	return append(assets, asset)
 }
 
-func (c *CombinedAnalyzer) findNetworkForAsset(asset *interfaces.Asset, networks map[string]*interfaces.NetworkSegment) string {
+func (c *CombinedAnalyzer) findNetworkForAsset(asset *types.Asset, networks map[string]*types.NetworkSegment) string {
 	if asset.IP == "" {
 		return ""
 	}
@@ -349,10 +349,10 @@ func (c *CombinedAnalyzer) findNetworkForAsset(asset *interfaces.Asset, networks
 	return ""
 }
 
-func (c *CombinedAnalyzer) isFlowAllowedByPolicies(flow *interfaces.Flow, policies []*interfaces.SecurityPolicy) bool {
+func (c *CombinedAnalyzer) isFlowAllowedByPolicies(flow *types.Flow, policies []*types.SecurityPolicy) bool {
 	// Simplified policy checking - would be more complex in practice
 	for _, policy := range policies {
-		if policy.Action == interfaces.Allow {
+		if policy.Action == types.Allow {
 			// Check if this policy covers the flow
 			if c.policyCoversFlow(policy, flow) {
 				return true
@@ -362,7 +362,7 @@ func (c *CombinedAnalyzer) isFlowAllowedByPolicies(flow *interfaces.Flow, polici
 	return false
 }
 
-func (c *CombinedAnalyzer) policyCoversFlow(policy *interfaces.SecurityPolicy, flow *interfaces.Flow) bool {
+func (c *CombinedAnalyzer) policyCoversFlow(policy *types.SecurityPolicy, flow *types.Flow) bool {
 	// Simplified policy matching
 	return policy.Source.CIDR == "any" || policy.Destination.CIDR == "any" ||
 		policy.Source.CIDR == flow.Source || policy.Destination.CIDR == flow.Destination
@@ -380,34 +380,34 @@ func (c *CombinedAnalyzer) extractNetworkIP(cidr string) string {
 	return ""
 }
 
-func (c *CombinedAnalyzer) mapRiskToCriticality(risk interfaces.RiskLevel) interfaces.CriticalityLevel {
+func (c *CombinedAnalyzer) mapRiskToCriticality(risk types.RiskLevel) types.CriticalityLevel {
 	switch risk {
-	case interfaces.HighRisk:
-		return interfaces.CriticalAsset
-	case interfaces.MediumRisk:
-		return interfaces.HighAsset
+	case types.HighRisk:
+		return types.CriticalAsset
+	case types.MediumRisk:
+		return types.HighAsset
 	default:
-		return interfaces.MediumAsset
+		return types.MediumAsset
 	}
 }
 
-func (c *CombinedAnalyzer) inferExposureFromZone(zone interfaces.IEC62443Zone) interfaces.ExposureLevel {
+func (c *CombinedAnalyzer) inferExposureFromZone(zone types.IEC62443Zone) types.ExposureLevel {
 	switch zone {
-	case interfaces.DMZZone:
-		return interfaces.InternetExposed
-	case interfaces.EnterpriseZone:
-		return interfaces.CorporateExposed
+	case types.DMZZone:
+		return types.InternetExposed
+	case types.EnterpriseZone:
+		return types.CorporateExposed
 	default:
-		return interfaces.OTOnly
+		return types.OTOnly
 	}
 }
 
-func (c *CombinedAnalyzer) calculatePriority(srcAsset, dstAsset *interfaces.Asset) string {
+func (c *CombinedAnalyzer) calculatePriority(srcAsset, dstAsset *types.Asset) string {
 	// Calculate priority based on asset criticality
-	if srcAsset.Criticality == interfaces.CriticalAsset || dstAsset.Criticality == interfaces.CriticalAsset {
+	if srcAsset.Criticality == types.CriticalAsset || dstAsset.Criticality == types.CriticalAsset {
 		return "High"
 	}
-	if srcAsset.Criticality == interfaces.HighAsset || dstAsset.Criticality == interfaces.HighAsset {
+	if srcAsset.Criticality == types.HighAsset || dstAsset.Criticality == types.HighAsset {
 		return "Medium"
 	}
 	return "Low"
@@ -416,7 +416,7 @@ func (c *CombinedAnalyzer) calculatePriority(srcAsset, dstAsset *interfaces.Asse
 // Data structures for analysis results
 
 type PolicyViolation struct {
-	Flow        *interfaces.Flow
+	Flow        *types.Flow
 	Description string
 	Severity    string
 }
@@ -424,9 +424,9 @@ type PolicyViolation struct {
 type SegmentationOpportunity struct {
 	Type        string
 	Description string
-	SourceZone  interfaces.IEC62443Zone
-	DestZone    interfaces.IEC62443Zone
-	Protocol    interfaces.Protocol
+	SourceZone  types.IEC62443Zone
+	DestZone    types.IEC62443Zone
+	Protocol    types.Protocol
 	Priority    string
 }
 
@@ -434,5 +434,5 @@ type SecurityPosture struct {
 	TotalFlows      int
 	PolicyCount     int
 	ComplianceScore float64
-	RiskLevel       interfaces.RiskLevel
+	RiskLevel       types.RiskLevel
 }
