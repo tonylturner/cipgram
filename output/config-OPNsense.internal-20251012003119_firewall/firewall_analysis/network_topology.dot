@@ -1,0 +1,106 @@
+digraph FirewallTopology {
+  rankdir=LR;
+  node [fontname="Arial", fontsize=10];
+  edge [fontname="Arial", fontsize=9];
+  bgcolor=white;
+  splines=ortho;
+  nodesep=1.0;
+  ranksep=2.0;
+
+  label="Firewall Network Topology\n/Users/tturner/Documents/config-OPNsense.internal-20251012003119.xml\nGenerated: 2025-10-11 20:32:17";
+  labelloc=t;
+  fontsize=14;
+
+  // Central Firewall
+  firewall [
+    label="🔥 Firewall\n(OPNsense)\n\nInterfaces:";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#e3f2fd";
+    color="#1976d2";
+    penwidth=3;
+    fontsize=12;
+    fontname="Arial Bold";
+  ];
+
+  // Network Segments
+  net_wan [
+    label="wan\n(WAN)\n\nZone: DMZ Zone\nRisk: Medium\nType: Internet";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#ffe0b2";
+    color="#f57c00";
+    penwidth=2;
+    fontsize=10;
+  ];
+  net_lan [
+    label="lan\n10.30.0.2/24\n(site)\n\nZone: Manufacturing Zone\nRisk: High\nType: General";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#c8e6c9";
+    color="#2e7d32";
+    penwidth=2;
+    fontsize=10;
+  ];
+  net_opt1 [
+    label="opt1\n10.10.0.2/24\n(corp)\n\nZone: Enterprise Zone\nRisk: Low\nType: General";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#e1bee7";
+    color="#7b1fa2";
+    penwidth=2;
+    fontsize=10;
+  ];
+  net_opt2 [
+    label="opt2\n10.20.0.2/24\n(dmz)\n\nZone: DMZ Zone\nRisk: Medium\nType: DMZ";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#ffe0b2";
+    color="#f57c00";
+    penwidth=2;
+    fontsize=10;
+  ];
+  net_opt3 [
+    label="opt3\n10.40.0.2/24\n(cell)\n\nZone: Enterprise Zone\nRisk: Low\nType: General";
+    shape=box;
+    style="filled,rounded";
+    fillcolor="#e1bee7";
+    color="#7b1fa2";
+    penwidth=2;
+    fontsize=10;
+  ];
+
+  // Firewall to Network Connections
+  firewall -> net_opt2 [
+    label="opt2\n10.20.0.2/24";
+    fontsize=9;
+    color="#666666";
+    penwidth=2;
+  ];
+  firewall -> net_opt3 [
+    label="opt3\n10.40.0.2/24";
+    fontsize=9;
+    color="#666666";
+    penwidth=2;
+  ];
+  firewall -> net_wan [
+    label="wan";
+    fontsize=9;
+    color="#666666";
+    penwidth=2;
+  ];
+  firewall -> net_lan [
+    label="lan\n10.30.0.2/24";
+    fontsize=9;
+    color="#666666";
+    penwidth=2;
+  ];
+  firewall -> net_opt1 [
+    label="opt1\n10.10.0.2/24";
+    fontsize=9;
+    color="#666666";
+    penwidth=2;
+  ];
+
+  // Security Rules (as edge labels)
+}
