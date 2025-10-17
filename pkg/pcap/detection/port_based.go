@@ -222,6 +222,39 @@ func (pbd *PortBasedDetector) initializePortMappings() {
 	pbd.addTCPMapping(9200, "Elasticsearch", 0.85, "Elasticsearch", "Search")
 	pbd.addTCPMapping(5601, "Kibana", 0.85, "Kibana Dashboard", "Monitoring")
 	pbd.addTCPMapping(3001, "Grafana Alternative", 0.80, "Grafana Alternative Port", "Monitoring")
+
+	// Container and Orchestration protocols
+	pbd.addTCPMapping(2376, "Docker", 0.95, "Docker Daemon API", "Container")
+	pbd.addTCPMapping(2377, "Docker Swarm", 0.95, "Docker Swarm Management", "Container")
+	pbd.addTCPMapping(6443, "Kubernetes API", 0.95, "Kubernetes API Server", "Container")
+	pbd.addTCPMapping(10250, "Kubelet", 0.90, "Kubernetes Kubelet", "Container")
+	pbd.addTCPMapping(10251, "Kube-Scheduler", 0.90, "Kubernetes Scheduler", "Container")
+	pbd.addTCPMapping(10252, "Kube-Controller", 0.90, "Kubernetes Controller Manager", "Container")
+	pbd.addTCPMapping(2379, "etcd Client", 0.90, "etcd Client API", "Container")
+	pbd.addTCPMapping(2380, "etcd Peer", 0.90, "etcd Peer Communication", "Container")
+
+	// IoT and Edge protocols
+	pbd.addTCPMapping(5683, "CoAP", 0.85, "Constrained Application Protocol", "IoT")
+	pbd.addUDPMapping(5683, "CoAP", 0.85, "Constrained Application Protocol", "IoT")
+	pbd.addUDPMapping(1700, "LoRaWAN", 0.85, "LoRaWAN Gateway", "IoT")
+
+	// Streaming and Media protocols
+	pbd.addTCPMapping(554, "RTSP", 0.90, "Real Time Streaming Protocol", "Media")
+	pbd.addUDPMapping(554, "RTSP", 0.90, "Real Time Streaming Protocol", "Media")
+	pbd.addTCPMapping(1935, "RTMP", 0.90, "Real Time Messaging Protocol", "Media")
+	pbd.addUDPMapping(3478, "STUN", 0.80, "Session Traversal Utilities for NAT", "Media")
+
+	// Additional DevOps and CI/CD tools
+	pbd.addTCPMapping(8080, "Jenkins", 0.70, "Jenkins CI/CD", "DevOps")
+	pbd.addTCPMapping(9000, "SonarQube", 0.75, "SonarQube Code Quality", "DevOps")
+	pbd.addTCPMapping(8081, "Nexus Repository", 0.75, "Nexus Repository Manager", "DevOps")
+	pbd.addTCPMapping(5000, "Docker Registry", 0.80, "Docker Registry", "Container")
+
+	// Network Security and VPN protocols
+	pbd.addUDPMapping(500, "IKE", 0.90, "Internet Key Exchange", "VPN")
+	pbd.addUDPMapping(4500, "IPSec NAT-T", 0.90, "IPSec NAT Traversal", "VPN")
+	pbd.addTCPMapping(1723, "PPTP", 0.85, "Point-to-Point Tunneling Protocol", "VPN")
+	pbd.addUDPMapping(1194, "OpenVPN", 0.90, "OpenVPN", "VPN")
 }
 
 // addTCPMapping adds a TCP port mapping

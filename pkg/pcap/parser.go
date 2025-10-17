@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"cipgram/pkg/logging"
+	"cipgram/pkg/pcap/fingerprinting"
 	"cipgram/pkg/pcap/integration"
+	"cipgram/pkg/pcap/performance"
 	"cipgram/pkg/types"
 	"cipgram/pkg/vendor"
 
@@ -26,6 +28,9 @@ type PCAPParser struct {
 	pcapPath         string
 	config           *PCAPConfig
 	detectionAdapter *integration.ModularDetectionAdapter
+	fingerprinter    *fingerprinting.EnhancedDeviceFingerprinter
+	packetCache      map[string][]gopacket.Packet // Cache packets per asset for fingerprinting
+	optimizer        *performance.PerformanceOptimizer
 }
 
 // PCAPConfig holds configuration for PCAP parsing
@@ -56,6 +61,9 @@ func NewPCAPParser(pcapPath string, config *PCAPConfig) *PCAPParser {
 		pcapPath:         pcapPath,
 		config:           config,
 		detectionAdapter: integration.NewModularDetectionAdapter(config.ConfigPath),
+		fingerprinter:    fingerprinting.NewEnhancedDeviceFingerprinter(),
+		packetCache:      make(map[string][]gopacket.Packet),
+		optimizer:        performance.NewPerformanceOptimizer(performance.GetDefaultConfig()),
 	}
 }
 
@@ -108,11 +116,9 @@ func (p *PCAPParser) parseSequential() (*types.NetworkModel, error) {
 
 	for packet := range src.Packets() {
 		packetCount++
-		if packetCount%10000 == 0 {
-			logger.Debug("Processing progress", map[string]interface{}{
-				"packets_processed": packetCount,
-			})
-		}
+
+		// Record packet processing start time
+		processingStart := time.Now()
 
 		if err := p.processPacket(packet, model); err != nil {
 			// Log error but continue processing - packet errors shouldn't stop analysis
@@ -122,6 +128,21 @@ func (p *PCAPParser) parseSequential() (*types.NetworkModel, error) {
 				"error":         err.Error(),
 			})
 			continue
+		}
+
+		// Record processing time for performance tracking
+		processingTime := time.Since(processingStart)
+		p.optimizer.RecordPacketProcessed(processingTime)
+
+		if packetCount%10000 == 0 {
+			logger.Debug("Processing progress", map[string]interface{}{
+				"packets_processed": packetCount,
+			})
+
+			// Optimize garbage collection periodically for large PCAPs
+			if packetCount%50000 == 0 {
+				p.optimizer.OptimizeGC()
+			}
 		}
 	}
 
@@ -153,6 +174,9 @@ func (p *PCAPParser) parseSequential() (*types.NetworkModel, error) {
 	// Print detection statistics
 	stats := p.detectionAdapter.GetDetectionStats()
 	log.Printf("Detection Statistics: %+v", stats)
+
+	// Print performance optimization report
+	p.optimizer.PrintPerformanceReport()
 
 	// Analyze unknown protocols and provide recommendations
 	unknownFlows := make(map[string]int)
@@ -243,6 +267,10 @@ func (p *PCAPParser) processPacket(packet gopacket.Packet, model *types.NetworkM
 	srcAsset := p.getOrCreateAsset(model, srcIP.String(), eth.SrcMAC.String())
 	dstAsset := p.getOrCreateAsset(model, dstIP.String(), eth.DstMAC.String())
 
+	// Cache packets for fingerprinting (limit to 50 packets per asset)
+	p.cachePacketForFingerprinting(srcAsset.ID, packet)
+	p.cachePacketForFingerprinting(dstAsset.ID, packet)
+
 	// Detect protocol using optimized detection
 	protocol := p.detectionAdapter.DetectProtocol(packet)
 	flowKey := types.FlowKey{
@@ -254,14 +282,13 @@ func (p *PCAPParser) processPacket(packet gopacket.Packet, model *types.NetworkM
 	// Update or create flow
 	flow := model.Flows[flowKey]
 	if flow == nil {
-		flow = &types.Flow{
-			Source:      srcAsset.ID,
-			Destination: dstAsset.ID,
-			Protocol:    types.Protocol(protocol),
-			Ports:       []types.Port{},
-			FirstSeen:   packet.Metadata().Timestamp,
-			Allowed:     true, // Assume allowed for PCAP traffic
-		}
+		// Use performance optimizer to get flow from pool
+		flow = p.optimizer.GetFlow()
+		flow.Source = srcAsset.ID
+		flow.Destination = dstAsset.ID
+		flow.Protocol = types.Protocol(protocol)
+		flow.FirstSeen = packet.Metadata().Timestamp
+		flow.Allowed = true // Assume allowed for PCAP traffic
 		model.Flows[flowKey] = flow
 	}
 
@@ -382,18 +409,17 @@ func (p *PCAPParser) getOrCreateAsset(model *types.NetworkModel, ip, mac string)
 			hostname = vendor.ResolveHostname(ip)
 		}
 
-		asset = &types.Asset{
-			ID:           id,
-			IP:           ip,
-			MAC:          mac,
-			Hostname:     hostname,
-			Vendor:       vendorName,
-			Protocols:    []types.Protocol{},
-			PurdueLevel:  types.Unknown,
-			IEC62443Zone: "", // Will be inferred later
-			Criticality:  types.LowAsset,
-			Exposure:     types.OTOnly,
-		}
+		// Use performance optimizer to get asset from pool
+		asset = p.optimizer.GetAsset()
+		asset.ID = id
+		asset.IP = ip
+		asset.MAC = mac
+		asset.Hostname = hostname
+		asset.Vendor = vendorName
+		asset.PurdueLevel = types.Unknown
+		asset.IEC62443Zone = "" // Will be inferred later
+		asset.Criticality = types.LowAsset
+		asset.Exposure = types.OTOnly
 		model.Assets[id] = asset
 	}
 
@@ -576,28 +602,64 @@ func (p *PCAPParser) enhanceModel(model *types.NetworkModel) error {
 	return nil
 }
 
-// performDeviceFingerprinting performs basic device classification
+// performDeviceFingerprinting performs enhanced device classification
 func (p *PCAPParser) performDeviceFingerprinting(model *types.NetworkModel) {
 	logger := logging.NewLogger("device-classifier", logging.INFO, false)
 
+	enhancedCount := 0
+	basicCount := 0
+
 	for _, asset := range model.Assets {
-		// Basic device classification based on protocols
-		asset.DeviceName = p.classifyDeviceType(asset)
+		// Get cached packets for this asset
+		packets := p.packetCache[asset.ID]
+
+		if len(packets) > 0 {
+			// Perform enhanced fingerprinting
+			deviceInfo := p.fingerprinter.FingerprintDevice(asset, packets)
+
+			if deviceInfo.Confidence > 0.5 {
+				asset.DeviceName = deviceInfo.DeviceType
+				asset.Vendor = deviceInfo.Manufacturer
+				asset.OS = deviceInfo.OS
+				asset.Model = deviceInfo.Model
+				asset.Version = deviceInfo.Version
+
+				// Store fingerprinting details
+				asset.FingerprintingDetails = map[string]interface{}{
+					"confidence": deviceInfo.Confidence,
+					"indicators": deviceInfo.Indicators,
+					"method":     "enhanced",
+				}
+
+				enhancedCount++
+			} else {
+				// Fall back to basic classification
+				asset.DeviceName = p.classifyDeviceType(asset)
+				asset.FingerprintingDetails = map[string]interface{}{
+					"confidence": 0.3,
+					"method":     "basic",
+				}
+				basicCount++
+			}
+		} else {
+			// Basic device classification based on protocols only
+			asset.DeviceName = p.classifyDeviceType(asset)
+			asset.FingerprintingDetails = map[string]interface{}{
+				"confidence": 0.2,
+				"method":     "protocol-only",
+			}
+			basicCount++
+		}
 
 		// Update roles based on device type
-		if asset.DeviceName == "PLC" {
-			asset.Roles = append(asset.Roles, "Controller")
-		} else if asset.DeviceName == "HMI" {
-			asset.Roles = append(asset.Roles, "Operator Interface")
-		} else if asset.DeviceName == "Network Infrastructure" {
-			asset.Roles = append(asset.Roles, "Network Device")
-		} else if asset.DeviceName == "Workstation" {
-			asset.Roles = append(asset.Roles, "Engineering Station")
-		}
+		p.updateAssetRoles(asset)
 	}
 
 	logger.Info("Device classification completed", map[string]interface{}{
-		"total_assets": len(model.Assets),
+		"total_assets":     len(model.Assets),
+		"enhanced_count":   enhancedCount,
+		"basic_count":      basicCount,
+		"enhancement_rate": float64(enhancedCount) / float64(len(model.Assets)),
 	})
 }
 
@@ -630,6 +692,59 @@ func (p *PCAPParser) classifyDeviceType(asset *types.Asset) string {
 
 	// Default classification
 	return "Unknown"
+}
+
+// cachePacketForFingerprinting caches packets for device fingerprinting
+func (p *PCAPParser) cachePacketForFingerprinting(assetID string, packet gopacket.Packet) {
+	// Limit cache size per asset to prevent memory issues
+	const maxPacketsPerAsset = 50
+
+	if packets, exists := p.packetCache[assetID]; exists {
+		if len(packets) < maxPacketsPerAsset {
+			p.packetCache[assetID] = append(packets, packet)
+		}
+	} else {
+		p.packetCache[assetID] = []gopacket.Packet{packet}
+	}
+}
+
+// updateAssetRoles updates asset roles based on device type
+func (p *PCAPParser) updateAssetRoles(asset *types.Asset) {
+	// Clear existing roles
+	asset.Roles = []string{}
+
+	switch asset.DeviceName {
+	case "PLC":
+		asset.Roles = append(asset.Roles, "Controller", "Industrial Device")
+	case "HMI":
+		asset.Roles = append(asset.Roles, "Operator Interface", "Industrial Device")
+	case "RTU":
+		asset.Roles = append(asset.Roles, "Remote Terminal Unit", "Industrial Device")
+	case "DCS":
+		asset.Roles = append(asset.Roles, "Distributed Control System", "Industrial Device")
+	case "SCADA Server":
+		asset.Roles = append(asset.Roles, "SCADA System", "Industrial Device")
+	case "Industrial Gateway":
+		asset.Roles = append(asset.Roles, "Protocol Gateway", "Industrial Device")
+	case "Industrial Switch", "Industrial Router":
+		asset.Roles = append(asset.Roles, "Network Infrastructure", "Industrial Device")
+	case "Building Controller":
+		asset.Roles = append(asset.Roles, "Building Automation", "Industrial Device")
+	case "Process Controller":
+		asset.Roles = append(asset.Roles, "Process Control", "Industrial Device")
+	case "Safety PLC":
+		asset.Roles = append(asset.Roles, "Safety System", "Industrial Device")
+	case "Network Switch", "Network Router":
+		asset.Roles = append(asset.Roles, "Network Infrastructure")
+	case "Firewall":
+		asset.Roles = append(asset.Roles, "Security Device", "Network Infrastructure")
+	case "Workstation":
+		asset.Roles = append(asset.Roles, "End User Device")
+	case "Server":
+		asset.Roles = append(asset.Roles, "Server System")
+	default:
+		asset.Roles = append(asset.Roles, "Unknown Device")
+	}
 }
 
 // printEnhancedStatistics prints enhanced protocol detection statistics

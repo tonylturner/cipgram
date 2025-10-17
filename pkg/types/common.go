@@ -191,18 +191,22 @@ type Graph struct {
 
 // Asset represents a network device/host with enhanced segmentation context
 type Asset struct {
-	ID           string
-	IP           string
-	MAC          string
-	Hostname     string
-	DeviceName   string
-	Vendor       string
-	PurdueLevel  PurdueLevel
-	IEC62443Zone IEC62443Zone
-	Roles        []string
-	Protocols    []Protocol
-	Criticality  CriticalityLevel
-	Exposure     ExposureLevel
+	ID                    string
+	IP                    string
+	MAC                   string
+	Hostname              string
+	DeviceName            string
+	Vendor                string
+	OS                    string // Operating system from fingerprinting
+	Model                 string // Device model from fingerprinting
+	Version               string // Software/firmware version
+	PurdueLevel           PurdueLevel
+	IEC62443Zone          IEC62443Zone
+	Roles                 []string
+	Protocols             []Protocol
+	Criticality           CriticalityLevel
+	Exposure              ExposureLevel
+	FingerprintingDetails map[string]interface{} // Enhanced fingerprinting metadata
 }
 
 // NetworkSegment represents a logical or physical network segment

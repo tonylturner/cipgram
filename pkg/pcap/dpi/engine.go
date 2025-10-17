@@ -179,6 +179,7 @@ func (engine *ModularDPIEngine) initializeAnalyzers() {
 		engine.RegisterAnalyzer("EtherNetIP", NewEtherNetIPAnalyzer())
 		engine.RegisterAnalyzer("DNP3", NewDNP3Analyzer())
 		engine.RegisterAnalyzer("BACnet", NewBACnetAnalyzer())
+		engine.RegisterAnalyzer("CoAP", NewCoAPAnalyzer())
 	}
 }
 

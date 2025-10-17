@@ -46,6 +46,11 @@ func NewBACnetAnalyzer() core.DPIAnalyzer {
 	return &BACnetAnalyzer{}
 }
 
+// NewCoAPAnalyzer creates a new CoAP analyzer
+func NewCoAPAnalyzer() core.DPIAnalyzer {
+	return analyzers.NewCoAPAnalyzer()
+}
+
 // Placeholder analyzers for protocols not yet fully implemented
 
 // TLSAnalyzer implements TLS/SSL protocol analysis
