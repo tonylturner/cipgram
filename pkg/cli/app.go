@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -12,9 +11,7 @@ import (
 	"cipgram/internal/output"
 	"cipgram/internal/writers"
 	"cipgram/pkg/firewall"
-	"cipgram/pkg/pcap"
 	"cipgram/pkg/types"
-	"cipgram/pkg/vendor"
 )
 
 // App represents the main CLI application
@@ -66,106 +63,27 @@ func (a *App) runInstall() error {
 
 	fmt.Printf("Installing CIPgram to %s...\n", installPath)
 
-	// Get current executable path
-	currentExe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to get current executable path: %v", err)
+	// Check if sudo is needed and handle elevation
+	if needsSudo, err := a.handleSudoExecution(installPath, enableCompletion); err != nil {
+		return err
+	} else if needsSudo {
+		return nil // Execution was handed off to sudo
 	}
 
-	// Target installation path
-	targetPath := filepath.Join(installPath, "cipgram")
-
-	// Check if we need sudo permissions
-	if err := checkWritePermission(installPath); err != nil {
-		// Check if we're already running as root/sudo
-		if os.Geteuid() == 0 {
-			return fmt.Errorf("running as root but still no write permission to %s", installPath)
-		}
-
-		fmt.Printf("Elevated permissions required. Re-running with sudo...\n")
-
-		// Build the sudo command with all current arguments
-		args := []string{currentExe, "install"}
-		if installPath != "/usr/local/bin" {
-			args = append(args, "path", installPath)
-		}
-		if !enableCompletion {
-			args = append(args, "no-completion")
-		}
-
-		// Execute with sudo
-		cmd := exec.Command("sudo", args...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		cmd.Stdin = os.Stdin
-
-		return cmd.Run()
+	// Install the binary
+	if err := a.installBinary(installPath); err != nil {
+		return err
 	}
 
-	// Create install directory if it doesn't exist
-	if err := os.MkdirAll(installPath, 0755); err != nil {
-		return fmt.Errorf("failed to create install directory: %v", err)
-	}
-
-	// Copy the binary
-	if err := copyFile(currentExe, targetPath); err != nil {
-		return fmt.Errorf("failed to copy binary: %v", err)
-	}
-
-	// Make it executable
-	if err := os.Chmod(targetPath, 0755); err != nil {
-		return fmt.Errorf("failed to make binary executable: %v", err)
-	}
-
-	fmt.Printf("Binary installed successfully.\n")
-
-	// Install tab completion if requested
+	// Setup tab completion if requested
 	if enableCompletion {
-		if err := a.installTabCompletion(); err != nil {
-			fmt.Printf("Warning: Tab completion installation failed: %v\n", err)
-		} else {
-			fmt.Printf("Tab completion installed.\n")
-
-			// Prompt user to reload shell configuration
-			// Use the same shell detection logic as installTabCompletion
-			userShell := os.Getenv("SHELL")
-			if userShell == "" || userShell == "/bin/sh" {
-				// When running with sudo, try to get the original user's shell
-				if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
-					// Try macOS dscl first (more reliable on macOS)
-					cmd := exec.Command("dscl", ".", "-read", "/Users/"+sudoUser, "UserShell")
-					if output, err := cmd.Output(); err == nil {
-						// Parse "UserShell: /bin/zsh" format
-						lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-						for _, line := range lines {
-							if strings.HasPrefix(line, "UserShell: ") {
-								userShell = strings.TrimPrefix(line, "UserShell: ")
-								break
-							}
-						}
-					}
-				}
-			}
-
-			if strings.Contains(userShell, "zsh") {
-				fmt.Printf("To activate tab completion, run: source ~/.zshrc\n")
-			} else if strings.Contains(userShell, "bash") {
-				fmt.Printf("To activate tab completion, run: source ~/.bashrc\n")
-			} else {
-				fmt.Printf("To activate tab completion, run: source ~/.bashrc\n")
-			}
-		}
+		a.setupTabCompletion()
 	}
 
 	// Verify installation
-	if err := exec.Command("which", "cipgram").Run(); err != nil {
-		fmt.Printf("Warning: cipgram not found in PATH. You may need to restart your shell.\n")
-	} else {
-		fmt.Printf("Installation verified - cipgram is now available system-wide.\n")
-	}
+	a.verifyInstallation()
 
 	fmt.Printf("Installation complete.\n")
-
 	return nil
 }
 
@@ -290,9 +208,19 @@ func (a *App) runCombinedAnalysis() error {
 		checkGraphvizInstallation()
 	}
 
-	// TODO: Implement combined analysis
-	fmt.Printf("⚠️  Combined analysis feature coming soon!\n")
+	// Combined analysis implementation plan:
+	// 1. Parse PCAP file to discover actual network traffic and devices
+	// 2. Parse firewall config to understand intended security policies
+	// 3. Cross-correlate to identify:
+	//    - Policy violations (traffic not covered by rules)
+	//    - Unused/redundant firewall rules
+	//    - Security gaps and recommendations
+	//    - Asset validation against firewall configuration
+	// 4. Generate enhanced reports with compliance scoring
+
+	fmt.Printf("⚠️  Combined analysis feature under development!\n")
 	fmt.Printf("💡 Use separate 'pcap' and 'config' commands for now\n")
+	fmt.Printf("🔬 This feature will cross-correlate traffic patterns with firewall policies\n")
 
 	return nil
 }
@@ -379,106 +307,22 @@ func (a *App) runFirewallAnalysis(paths *output.OutputPaths) error {
 // runPCAPAnalysis performs PCAP-only analysis
 // runPCAPAnalysisWithPaths performs PCAP-only analysis with provided paths
 func (a *App) runPCAPAnalysisWithPaths(paths *output.OutputPaths) error {
-	log.Printf("📊 PCAP Traffic Analysis")
-	log.Printf("📊 PCAP file: %s", a.config.PcapPath)
-	log.Printf("💾 JSON file: %s", a.config.OutJSON)
-
-	// Set default output paths if not specified
-	if a.config.OutDOT == "" {
-		a.config.OutDOT = fmt.Sprintf("%s/network_diagrams/diagram.dot", paths.ProjectRoot)
-	}
-	if a.config.OutJSON == "" {
-		a.config.OutJSON = fmt.Sprintf("%s/data/diagram.json", paths.ProjectRoot)
-	}
-
-	// Show configuration info
-	if a.config.EnableVendorLookup {
-		log.Printf("🏷️  Vendor lookup: enabled (MAC addresses will be resolved to manufacturers)")
-	} else {
-		log.Printf("🏷️  Vendor lookup: disabled (use -vendor-lookup=true to enable)")
-	}
-
-	if a.config.EnableDNSLookup {
-		log.Printf("🌐 DNS lookup: enabled (IP addresses will be resolved to hostnames)")
-	} else {
-		log.Printf("🌐 DNS lookup: disabled (use -dns-lookup=true to enable)")
-	}
-
-	// Create PCAP parser with configuration
-	pcapConfig := &pcap.PCAPConfig{
-		ShowHostnames:      a.config.ShowHostnames,
-		EnableVendorLookup: a.config.EnableVendorLookup,
-		EnableDNSLookup:    a.config.EnableDNSLookup,
-		FastMode:           a.config.FastMode,
-		HideUnknown:        a.config.HideUnknown,
-		MaxNodes:           a.config.MaxNodes,
-		ConfigPath:         a.config.ConfigPath,
-	}
-
-	parser := pcap.NewPCAPParser(a.config.PcapPath, pcapConfig)
-
-	log.Printf("🔍 Parsing PCAP file...")
+	// Configure analysis settings and display info
+	a.configurePCAPAnalysis(paths)
 
 	// Parse the PCAP file
-	model, err := parser.Parse()
+	model, err := a.parsePCAPFile()
 	if err != nil {
-		return fmt.Errorf("failed to parse PCAP: %v", err)
+		return err
 	}
 
-	log.Printf("✅ Parsed PCAP: %d assets, %d flows", len(model.Assets), len(model.Flows))
-
-	// Convert NetworkModel to Graph for proper PCAP diagram generation
-	graph := a.convertNetworkModelToGraph(model)
-
-	log.Printf("🌐 Generating PCAP network diagrams...")
-	log.Printf("📁 Output directory: %s", paths.NetworkDiagrams)
-
-	// Generate Purdue model diagram (traditional Purdue with horizontal bars)
-	purdueBasePath := filepath.Join(paths.NetworkDiagrams, "purdue_diagram")
-	log.Printf("🏭 Generating traditional Purdue model diagram...")
-	if err := a.generatePurdueModelDiagrams(graph, purdueBasePath, model); err != nil {
-		log.Printf("Warning: Failed to generate Purdue diagrams: %v", err)
-	} else {
-		log.Printf("✅ Purdue model diagrams: %s.{dot,json,svg,png}", purdueBasePath)
+	// Generate all PCAP diagrams
+	if err := a.generatePCAPDiagrams(model, paths); err != nil {
+		return err
 	}
 
-	// Generate network topology diagram (traditional network with router/firewall center)
-	networkBasePath := filepath.Join(paths.NetworkDiagrams, "network_topology")
-	log.Printf("🌐 Generating traditional network topology diagram...")
-	if err := a.generateNetworkTopologyDiagrams(graph, networkBasePath, model); err != nil {
-		log.Printf("Warning: Failed to generate network diagrams: %v", err)
-	} else {
-		log.Printf("✅ Network topology diagrams: %s.{dot,json,svg,png}", networkBasePath)
-	}
-
-	// Generate CSV conversation analysis
-	log.Printf("📊 Generating conversation analysis CSV...")
-	if err := a.generateConversationCSV(model, paths); err != nil {
-		log.Printf("Warning: Failed to generate conversation CSV: %v", err)
-	} else {
-		log.Printf("✅ Conversation analysis: %s/data/conversations.csv", paths.ProjectRoot)
-	}
-
-	// Save JSON output if requested
-	if a.config.OutJSON != "" {
-		log.Printf("💾 Saving analysis data...")
-		jsonData, err := json.MarshalIndent(model, "", "  ")
-		if err != nil {
-			log.Printf("Warning: Failed to marshal JSON: %v", err)
-		} else if err := os.WriteFile(a.config.OutJSON, jsonData, 0644); err != nil {
-			log.Printf("Warning: Failed to save JSON: %v", err)
-		} else {
-			log.Printf("✅ Analysis data: %s", a.config.OutJSON)
-		}
-	}
-
-	// Display analysis summary
-	a.displayPCAPSummary(model)
-
-	// Save OUI cache if vendor lookup was used
-	if a.config.EnableVendorLookup {
-		vendor.SaveOUICache()
-	}
+	// Export results and cleanup
+	a.exportPCAPResults(model, paths)
 
 	return nil
 }

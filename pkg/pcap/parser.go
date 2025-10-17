@@ -1,7 +1,11 @@
 package pcap
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -53,6 +57,27 @@ func NewPCAPParser(pcapPath string, config *PCAPConfig) *PCAPParser {
 
 // Parse implements InputSource.Parse for PCAP files using new data structures
 func (p *PCAPParser) Parse() (*types.NetworkModel, error) {
+	// Check file size to decide processing strategy
+	info, err := os.Stat(p.pcapPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat PCAP file: %v", err)
+	}
+
+	// Use parallel processing for files larger than 100MB or when not in fast mode
+	const parallelThreshold = 100 * 1024 * 1024 // 100MB
+	useParallel := info.Size() > parallelThreshold && !p.config.FastMode
+
+	if useParallel {
+		log.Printf("📈 Large file detected (%d MB), using parallel processing", info.Size()/(1024*1024))
+		return p.parseWithWorkerPool()
+	} else {
+		log.Printf("📊 Using sequential processing for file (%d MB)", info.Size()/(1024*1024))
+		return p.parseSequential()
+	}
+}
+
+// parseSequential processes packets sequentially (original implementation)
+func (p *PCAPParser) parseSequential() (*types.NetworkModel, error) {
 	// Open PCAP file
 	handle, err := pcap.OpenOffline(p.pcapPath)
 	if err != nil {
@@ -79,10 +104,52 @@ func (p *PCAPParser) Parse() (*types.NetworkModel, error) {
 		}
 
 		if err := p.processPacket(packet, model); err != nil {
-			// Log error but continue processing
+			// Log error but continue processing - packet errors shouldn't stop analysis
+			log.Printf("Warning: Failed to process packet %d: %v", packetCount, err)
 			continue
 		}
 	}
+
+	// Post-processing: deduplicate, classify, enhance
+	p.enhanceModel(model)
+
+	// Infer network segments from traffic patterns
+	p.inferNetworkSegments(model)
+
+	return model, nil
+}
+
+// parseWithWorkerPool processes packets in parallel using worker pool
+func (p *PCAPParser) parseWithWorkerPool() (*types.NetworkModel, error) {
+	// Open PCAP file
+	handle, err := pcap.OpenOffline(p.pcapPath)
+	if err != nil {
+		return nil, err
+	}
+	defer handle.Close()
+
+	// Create and start worker pool
+	wp := NewWorkerPool(p, 0) // Use default number of workers
+	wp.Start()
+
+	// Feed packets to worker pool
+	src := gopacket.NewPacketSource(handle, handle.LinkType())
+	packetCount := 0
+
+	for packet := range src.Packets() {
+		packetCount++
+		wp.ProcessPacket(packet)
+
+		if packetCount%5000 == 0 {
+			log.Printf("📦 Queued %d packets for processing", packetCount)
+		}
+	}
+
+	log.Printf("📋 Finished reading %d packets, waiting for processing to complete...", packetCount)
+
+	// Wait for processing to complete and get results
+	model := wp.Wait()
+	model.Metadata = p.GetMetadata()
 
 	// Post-processing: deduplicate, classify, enhance
 	p.enhanceModel(model)
@@ -109,7 +176,7 @@ func (p *PCAPParser) GetMetadata() types.InputMetadata {
 		Type:      types.InputTypePCAP,
 		Timestamp: modTime,
 		Size:      size,
-		Hash:      "", // TODO: Calculate file hash
+		Hash:      calculateFileHash(p.pcapPath),
 	}
 }
 
@@ -536,4 +603,22 @@ func (p *PCAPParser) inferNetworkPurpose(assets []*types.Asset) string {
 	}
 
 	return "General Purpose"
+}
+
+// calculateFileHash computes SHA256 hash of a file for integrity checking
+func calculateFileHash(filePath string) string {
+	file, err := os.Open(filePath)
+	if err != nil {
+		log.Printf("Warning: Failed to calculate file hash for %s: %v", filePath, err)
+		return ""
+	}
+	defer file.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		log.Printf("Warning: Failed to calculate file hash for %s: %v", filePath, err)
+		return ""
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil))
 }

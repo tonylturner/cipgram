@@ -154,17 +154,15 @@ func deduplicateHosts(g *Graph) {
 				}
 			}
 
-			// Merge roles (avoid duplicates)
+			// Merge roles (avoid duplicates) - O(n) using map
+			roleSet := make(map[string]bool)
+			for _, role := range primaryHost.Roles {
+				roleSet[role] = true
+			}
 			for _, role := range host.Roles {
-				hasRole := false
-				for _, existingRole := range primaryHost.Roles {
-					if existingRole == role {
-						hasRole = true
-						break
-					}
-				}
-				if !hasRole {
+				if !roleSet[role] {
 					primaryHost.Roles = append(primaryHost.Roles, role)
+					roleSet[role] = true
 				}
 			}
 

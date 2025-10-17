@@ -1,10 +1,14 @@
 package opnsense
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/xml"
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -77,7 +81,7 @@ func (p *OPNsenseParser) GetMetadata() types.InputMetadata {
 		Type:      types.InputTypeOPNsense,
 		Timestamp: modTime,
 		Size:      size,
-		Hash:      "", // TODO: Calculate file hash
+		Hash:      calculateFileHash(p.configPath),
 	}
 }
 
@@ -224,9 +228,22 @@ func (p *OPNsenseParser) parseFirewallRules(model *types.NetworkModel) error {
 
 // parseAliases processes network aliases for grouping
 func (p *OPNsenseParser) parseAliases(model *types.NetworkModel) error {
-	// OPNsense aliases help identify network groupings
-	// This can be used to enhance our network segments
-	return nil // TODO: Implement alias parsing
+	// OPNsense aliases help identify network groupings and can enhance our network segments
+	// Implementation plan:
+	// 1. Parse p.config.Aliases.Alias array
+	// 2. For each alias of type "network" or "host":
+	//    - Extract CIDR ranges or individual IPs
+	//    - Associate with existing network segments
+	//    - Create new segments if needed
+	// 3. For port aliases: enhance security policy port mappings
+	// 4. Update segment names and descriptions based on alias names
+
+	if p.config == nil || len(p.config.Aliases.Alias) == 0 {
+		return nil // No aliases to process
+	}
+
+	log.Printf("Found %d aliases in configuration (parsing not yet implemented)", len(p.config.Aliases.Alias))
+	return nil
 }
 
 // inferZones assigns IEC 62443 zones based on network analysis
@@ -420,19 +437,19 @@ func isNumeric(s string) bool {
 	return len(s) > 0
 }
 
-// parsePortNumber converts a string to a port number
+// parsePortNumber converts a string to a port number using standard library
 func parsePortNumber(s string) int {
-	if !isNumeric(s) {
+	if s == "" {
 		return 0
 	}
 
-	num := 0
-	for _, r := range s {
-		num = num*10 + int(r-'0')
+	num, err := strconv.Atoi(s)
+	if err != nil {
+		return 0 // Invalid number format
 	}
 
-	if num > 65535 {
-		return 0 // Invalid port
+	if num < 0 || num > 65535 {
+		return 0 // Invalid port range
 	}
 
 	return num
@@ -532,4 +549,22 @@ func (p *OPNsenseParser) calculateSegmentRisk(segment *types.NetworkSegment, pol
 	default:
 		return types.LowRisk
 	}
+}
+
+// calculateFileHash computes SHA256 hash of a file for integrity checking
+func calculateFileHash(filePath string) string {
+	file, err := os.Open(filePath)
+	if err != nil {
+		log.Printf("Warning: Failed to calculate file hash for %s: %v", filePath, err)
+		return ""
+	}
+	defer file.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		log.Printf("Warning: Failed to calculate file hash for %s: %v", filePath, err)
+		return ""
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil))
 }
