@@ -47,7 +47,7 @@ This guide shows how to integrate CIPgram analysis results with your existing No
 ### **Step 1: Run CIPgram Analysis**
 ```bash
 # Analyze your network configuration
-./cipgram -firewall-config configs/your_network.xml -project "lab_exercise_1"
+./cipgram config configs/your_network.xml project "lab_exercise_1"
 
 # Generate Notion-friendly exports
 ./scripts/notion_export.sh lab_exercise_1
@@ -152,7 +152,7 @@ Analyze the provided network configuration and populate the security assessment 
 ### **Notion API Integration** (Future Enhancement)
 ```bash
 # Potential automation script
-./cipgram -firewall-config config.xml -project "analysis" -notion-sync
+./cipgram config config.xml project "analysis"
 
 # Would automatically:
 # 1. Run analysis

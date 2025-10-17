@@ -7,7 +7,7 @@ Generate management-friendly summaries for workshop presentations:
 
 ```bash
 # Generate executive summary
-./cipgram -firewall-config config.xml -project "assessment" -report-format executive
+./cipgram config config.xml project "assessment"
 
 # Outputs:
 # - Executive summary (PDF/HTML)

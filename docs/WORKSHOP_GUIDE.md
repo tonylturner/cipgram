@@ -12,7 +12,7 @@ This guide provides structured learning modules for conducting OT network segmen
 #### **Exercise 1.1: Basic Network Analysis**
 ```bash
 # Analyze a simple manufacturing network
-./cipgram -firewall-config fwconfigs/manufacturing_insecure.xml -project "module1_discovery"
+./cipgram config fwconfigs/manufacturing_insecure.xml project "module1_discovery"
 
 # Students examine:
 # - Network topology diagram
@@ -42,8 +42,8 @@ This guide provides structured learning modules for conducting OT network segmen
 #### **Exercise 2.1: Risk Identification**
 ```bash
 # Compare secure vs insecure configurations
-./cipgram -firewall-config fwconfigs/water_treatment_secure.xml -project "module2_secure"
-./cipgram -firewall-config fwconfigs/manufacturing_insecure.xml -project "module2_insecure"
+./cipgram config fwconfigs/water_treatment_secure.xml project "module2_secure"
+./cipgram config fwconfigs/manufacturing_insecure.xml project "module2_insecure"
 ```
 
 **Discussion Points**:
@@ -54,7 +54,7 @@ This guide provides structured learning modules for conducting OT network segmen
 #### **Exercise 2.2: Policy Violation Detection**
 ```bash
 # Combined analysis to find policy violations
-./cipgram -pcap network_traffic.pcap -firewall-config firewall.xml -project "module2_violations"
+./cipgram combined network_traffic.pcap firewall.xml project "module2_violations"
 ```
 
 ### **Module 3: IEC 62443 Compliance (45 min)**
@@ -63,8 +63,8 @@ This guide provides structured learning modules for conducting OT network segmen
 #### **Exercise 3.1: Zone Classification**
 ```bash
 # Analyze different industry configurations
-./cipgram -firewall-config fwconfigs/power_substation_mixed.xml -project "module3_power"
-./cipgram -firewall-config fwconfigs/water_treatment_secure.xml -project "module3_water"
+./cipgram config fwconfigs/power_substation_mixed.xml project "module3_power"
+./cipgram config fwconfigs/water_treatment_secure.xml project "module3_water"
 ```
 
 **Discussion Points**:
@@ -78,10 +78,10 @@ This guide provides structured learning modules for conducting OT network segmen
 #### **Exercise 4.1: Before/After Analysis**
 ```bash
 # Analyze current state
-./cipgram -firewall-config fwconfigs/manufacturing_insecure.xml -project "module4_before"
+./cipgram config fwconfigs/manufacturing_insecure.xml project "module4_before"
 
 # Students design improvements, then analyze improved config
-./cipgram -firewall-config fwconfigs/manufacturing_improved.xml -project "module4_after"
+./cipgram config fwconfigs/manufacturing_improved.xml project "module4_after"
 ```
 
 #### **Exercise 4.2: Custom Scenario Design**

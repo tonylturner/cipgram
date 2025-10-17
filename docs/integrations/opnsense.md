@@ -35,16 +35,12 @@ scp /tmp/backup_config.xml user@analysis-host:configs/
 
 ### Basic Analysis
 ```bash
-./cipgram -firewall-config configs/opnsense_config.xml -project "factory_security_audit"
+./cipgram config configs/opnsense_config.xml project "factory_security_audit"
 ```
 
 ### Advanced Options
 ```bash
-./cipgram -firewall-config configs/config.xml \
-          -project "compliance_assessment" \
-          -output-format "both" \
-          -include-policies \
-          -iec62443-analysis
+./cipgram config configs/config.xml project "compliance_assessment" diagram=both
 ```
 
 ## Zone Classification Rules
@@ -104,11 +100,9 @@ Detailed firewall rule analysis:
 
 ## Integration with PCAP Analysis
 
-When combined with PCAP traffic analysis:
+When combined with PCAP traffic analysis (planned feature):
 ```bash
-./cipgram -pcap network_traffic.pcap \
-          -firewall-config opnsense_config.xml \
-          -project "complete_assessment"
+./cipgram combined network_traffic.pcap opnsense_config.xml project "complete_assessment"
 ```
 
 Provides:
@@ -145,8 +139,8 @@ ls -la config.xml
 
 ### Missing Analysis Data
 ```bash
-# Enable debug output
-./cipgram -firewall-config config.xml -debug -verbose
+# Enable verbose output (if available)
+./cipgram config config.xml project "debug_analysis"
 ```
 
 For additional support, see the main documentation or submit an issue with your configuration structure (sanitized).
