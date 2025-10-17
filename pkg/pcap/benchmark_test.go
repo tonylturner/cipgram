@@ -25,10 +25,9 @@ func BenchmarkPCAPProcessing(b *testing.B) {
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
 			packets := createTestPackets(tc.packetCount)
-			parser := &PCAPParser{
-				pcapPath: "benchmark.pcap",
-				config:   &PCAPConfig{EnableVendorLookup: false}, // Disable for pure processing speed
-			}
+			parser := NewPCAPParser("benchmark.pcap", &PCAPConfig{
+				EnableVendorLookup: false, // Disable for pure processing speed
+			})
 
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
@@ -49,10 +48,9 @@ func BenchmarkPCAPProcessing(b *testing.B) {
 
 // BenchmarkPacketProcessing benchmarks individual packet processing
 func BenchmarkPacketProcessing(b *testing.B) {
-	parser := &PCAPParser{
-		pcapPath: "benchmark.pcap",
-		config:   &PCAPConfig{EnableVendorLookup: false},
-	}
+	parser := NewPCAPParser("benchmark.pcap", &PCAPConfig{
+		EnableVendorLookup: false,
+	})
 
 	model := &types.NetworkModel{
 		Assets:   make(map[string]*types.Asset),
@@ -84,13 +82,10 @@ func BenchmarkVendorLookup(b *testing.B) {
 
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
-			parser := &PCAPParser{
-				pcapPath: "benchmark.pcap",
-				config: &PCAPConfig{
-					EnableVendorLookup: tc.enableVendor,
-					EnableDNSLookup:    tc.enableDNS,
-				},
-			}
+			parser := NewPCAPParser("benchmark.pcap", &PCAPConfig{
+				EnableVendorLookup: tc.enableVendor,
+				EnableDNSLookup:    tc.enableDNS,
+			})
 
 			model := &types.NetworkModel{
 				Assets:   make(map[string]*types.Asset),
@@ -113,10 +108,7 @@ func BenchmarkVendorLookup(b *testing.B) {
 
 // BenchmarkModelEnhancement benchmarks post-processing enhancement
 func BenchmarkModelEnhancement(b *testing.B) {
-	parser := &PCAPParser{
-		pcapPath: "benchmark.pcap",
-		config:   &PCAPConfig{},
-	}
+	parser := NewPCAPParser("benchmark.pcap", &PCAPConfig{})
 
 	// Create a model with realistic data
 	model := createRealisticModel(1000) // 1000 assets
@@ -131,10 +123,7 @@ func BenchmarkModelEnhancement(b *testing.B) {
 
 // BenchmarkNetworkSegmentation benchmarks network segment inference
 func BenchmarkNetworkSegmentation(b *testing.B) {
-	parser := &PCAPParser{
-		pcapPath: "benchmark.pcap",
-		config:   &PCAPConfig{},
-	}
+	parser := NewPCAPParser("benchmark.pcap", &PCAPConfig{})
 
 	model := createRealisticModel(1000)
 

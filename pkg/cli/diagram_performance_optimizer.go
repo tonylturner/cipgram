@@ -286,8 +286,8 @@ func (dpo *DiagramPerformanceOptimizer) GetOptimizationStats() map[string]interf
 
 // ShouldSkipDiagramGeneration determines if diagram generation should be skipped
 func (dpo *DiagramPerformanceOptimizer) ShouldSkipDiagramGeneration(nodeCount, edgeCount int) bool {
-	// Skip if graph is extremely large
-	if nodeCount > 200 || edgeCount > 500 {
+	// Skip if graph is extremely large (increased thresholds)
+	if nodeCount > 500 || edgeCount > 1000 {
 		log.Printf("WARNING: Skipping diagram generation: graph too large (%d nodes, %d edges)", nodeCount, edgeCount)
 		log.Printf("Use -fast-mode or reduce data size for diagram generation")
 		return true
