@@ -1,7 +1,8 @@
-package detection
+package detection_test
 
 import (
 	"cipgram/pkg/pcap/core"
+	"cipgram/pkg/pcap/detection"
 	"testing"
 
 	"github.com/google/gopacket"
@@ -50,7 +51,7 @@ func TestUnifiedDetector_DetectProtocol(t *testing.T) {
 	}
 
 	dpiEngine := NewMockDPIEngine()
-	detector := NewUnifiedDetector(config, dpiEngine)
+	detector := detection.NewUnifiedDetector(config, dpiEngine)
 
 	// Create a test packet (HTTP on port 80)
 	packet := createTestHTTPPacket()
@@ -83,7 +84,7 @@ func TestUnifiedDetector_PortBasedDetection(t *testing.T) {
 		ConfidenceThreshold: 0.5,
 	}
 
-	detector := NewUnifiedDetector(config, nil)
+	detector := detection.NewUnifiedDetector(config, nil)
 
 	// Create a test packet on port 80
 	packet := createTestTCPPacket(12345, 80, []byte("some data"))
@@ -111,7 +112,7 @@ func TestUnifiedDetector_ConfidenceThreshold(t *testing.T) {
 		ConfidenceThreshold: 0.95, // High threshold
 	}
 
-	detector := NewUnifiedDetector(config, nil)
+	detector := detection.NewUnifiedDetector(config, nil)
 
 	// Create a packet that would normally be detected with lower confidence
 	packet := createTestTCPPacket(12345, 8080, []byte("some data"))
@@ -132,7 +133,7 @@ func TestUnifiedDetector_Caching(t *testing.T) {
 		ConfidenceThreshold: 0.5,
 	}
 
-	detector := NewUnifiedDetector(config, nil)
+	detector := detection.NewUnifiedDetector(config, nil)
 
 	// Create identical packets
 	packet1 := createTestTCPPacket(12345, 80, []byte("test data"))
@@ -169,7 +170,7 @@ func TestUnifiedDetector_GetSupportedProtocols(t *testing.T) {
 	}
 
 	dpiEngine := NewMockDPIEngine()
-	detector := NewUnifiedDetector(config, dpiEngine)
+	detector := detection.NewUnifiedDetector(config, dpiEngine)
 
 	protocols := detector.GetSupportedProtocols()
 
@@ -198,7 +199,7 @@ func TestUnifiedDetector_GetDetectionStats(t *testing.T) {
 	}
 
 	dpiEngine := NewMockDPIEngine()
-	detector := NewUnifiedDetector(config, dpiEngine)
+	detector := detection.NewUnifiedDetector(config, dpiEngine)
 
 	// Process some packets
 	packet1 := createTestHTTPPacket()
@@ -232,7 +233,7 @@ func TestUnifiedDetector_ClearCache(t *testing.T) {
 		ConfidenceThreshold: 0.5,
 	}
 
-	detector := NewUnifiedDetector(config, nil)
+	detector := detection.NewUnifiedDetector(config, nil)
 
 	// Add something to cache
 	packet := createTestTCPPacket(12345, 80, []byte("test"))
@@ -260,7 +261,7 @@ func TestUnifiedDetector_SetCacheSize(t *testing.T) {
 		ConfidenceThreshold: 0.5,
 	}
 
-	detector := NewUnifiedDetector(config, nil)
+	detector := detection.NewUnifiedDetector(config, nil)
 
 	// Set new cache size
 	newSize := 500
@@ -332,7 +333,7 @@ func BenchmarkUnifiedDetector_DetectProtocol(b *testing.B) {
 	}
 
 	dpiEngine := NewMockDPIEngine()
-	detector := NewUnifiedDetector(config, dpiEngine)
+	detector := detection.NewUnifiedDetector(config, dpiEngine)
 
 	packet := createTestHTTPPacket()
 
@@ -350,7 +351,7 @@ func BenchmarkUnifiedDetector_PortBasedOnly(b *testing.B) {
 		ConfidenceThreshold: 0.5,
 	}
 
-	detector := NewUnifiedDetector(config, nil)
+	detector := detection.NewUnifiedDetector(config, nil)
 	packet := createTestTCPPacket(12345, 80, []byte("test"))
 
 	b.ResetTimer()
@@ -365,7 +366,7 @@ func BenchmarkUnifiedDetector_WithCaching(b *testing.B) {
 		ConfidenceThreshold: 0.5,
 	}
 
-	detector := NewUnifiedDetector(config, nil)
+	detector := detection.NewUnifiedDetector(config, nil)
 	packet := createTestTCPPacket(12345, 80, []byte("test"))
 
 	// Prime the cache

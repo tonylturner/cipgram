@@ -1,14 +1,16 @@
-package core
+package core_test
 
 import (
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"cipgram/pkg/pcap/core"
 )
 
 func TestDefaultConfigManager_GetDefaultConfig(t *testing.T) {
-	cm := NewConfigManager("")
+	cm := core.NewConfigManager("")
 	config := cm.GetDefaultConfig()
 
 	// Test detection config defaults
@@ -49,7 +51,7 @@ func TestDefaultConfigManager_GetDefaultConfig(t *testing.T) {
 }
 
 func TestDefaultConfigManager_ValidateConfig(t *testing.T) {
-	cm := NewConfigManager("")
+	cm := core.NewConfigManager("")
 
 	// Test valid config
 	validConfig := cm.GetDefaultConfig()
@@ -82,13 +84,13 @@ func TestDefaultConfigManager_LoadFromFile(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "test_config.json")
 
-	testConfig := &Config{
-		Detection: &DetectionConfig{
+	testConfig := &core.Config{
+		Detection: &core.DetectionConfig{
 			EnablePortBased:     true,
 			EnableDPI:           false,
 			ConfidenceThreshold: 0.8,
 		},
-		Performance: &PerformanceConfig{
+		Performance: &core.PerformanceConfig{
 			EnableCaching: true,
 			CacheSize:     5000,
 		},
@@ -105,7 +107,7 @@ func TestDefaultConfigManager_LoadFromFile(t *testing.T) {
 	}
 
 	// Test loading config
-	cm := NewConfigManager("")
+	cm := core.NewConfigManager("")
 	if err := cm.LoadFromFile(configPath); err != nil {
 		t.Fatalf("Failed to load config from file: %v", err)
 	}
@@ -123,7 +125,7 @@ func TestDefaultConfigManager_LoadFromFile(t *testing.T) {
 }
 
 func TestDefaultConfigManager_UpdateConfig(t *testing.T) {
-	cm := NewConfigManager("")
+	cm := core.NewConfigManager("")
 
 	// Get default config and modify it
 	config := cm.GetDefaultConfig()
@@ -146,7 +148,7 @@ func TestDefaultConfigManager_UpdateConfig(t *testing.T) {
 }
 
 func TestDefaultConfigManager_ProtocolManagement(t *testing.T) {
-	cm := NewConfigManager("")
+	cm := core.NewConfigManager("")
 
 	// Test enabling a protocol
 	if err := cm.EnableProtocol("TestProtocol"); err != nil {
@@ -168,7 +170,7 @@ func TestDefaultConfigManager_ProtocolManagement(t *testing.T) {
 }
 
 func TestDefaultConfigManager_CacheManagement(t *testing.T) {
-	cm := NewConfigManager("")
+	cm := core.NewConfigManager("")
 
 	// Test setting cache size
 	if err := cm.SetCacheSize(20000); err != nil {
@@ -192,7 +194,7 @@ func TestDefaultConfigManager_CacheManagement(t *testing.T) {
 }
 
 func TestDefaultConfigManager_GetEnabledAnalyzers(t *testing.T) {
-	cm := NewConfigManager("")
+	cm := core.NewConfigManager("")
 
 	analyzers := cm.GetEnabledAnalyzers()
 
@@ -217,7 +219,7 @@ func TestDefaultConfigManager_GetEnabledAnalyzers(t *testing.T) {
 }
 
 func TestDefaultConfigManager_GetConfigSummary(t *testing.T) {
-	cm := NewConfigManager("")
+	cm := core.NewConfigManager("")
 
 	summary := cm.GetConfigSummary()
 
@@ -244,7 +246,7 @@ func TestDefaultConfigManager_GetConfigSummary(t *testing.T) {
 }
 
 func BenchmarkDefaultConfigManager_GetConfig(b *testing.B) {
-	cm := NewConfigManager("")
+	cm := core.NewConfigManager("")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -253,7 +255,7 @@ func BenchmarkDefaultConfigManager_GetConfig(b *testing.B) {
 }
 
 func BenchmarkDefaultConfigManager_ValidateConfig(b *testing.B) {
-	cm := NewConfigManager("")
+	cm := core.NewConfigManager("")
 	config := cm.GetDefaultConfig()
 
 	b.ResetTimer()
@@ -263,7 +265,7 @@ func BenchmarkDefaultConfigManager_ValidateConfig(b *testing.B) {
 }
 
 func BenchmarkDefaultConfigManager_IsProtocolEnabled(b *testing.B) {
-	cm := NewConfigManager("")
+	cm := core.NewConfigManager("")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

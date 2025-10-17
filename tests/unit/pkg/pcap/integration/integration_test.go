@@ -1,7 +1,8 @@
-package integration
+package integration_test
 
 import (
 	"cipgram/pkg/pcap/core"
+	"cipgram/pkg/pcap/integration"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,7 +16,7 @@ func TestModularDetectionAdapter_Integration(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "test_config.json")
 
-	adapter := NewModularDetectionAdapter(configPath)
+	adapter := integration.NewModularDetectionAdapter(configPath)
 
 	// Test HTTP detection
 	httpPacket := createHTTPPacket()
@@ -41,7 +42,7 @@ func TestModularDetectionAdapter_Integration(t *testing.T) {
 }
 
 func TestModularDetectionAdapter_SupportedProtocols(t *testing.T) {
-	adapter := NewModularDetectionAdapter("")
+	adapter := integration.NewModularDetectionAdapter("")
 
 	protocols := adapter.GetSupportedProtocols()
 
@@ -64,7 +65,7 @@ func TestModularDetectionAdapter_SupportedProtocols(t *testing.T) {
 }
 
 func TestModularDetectionAdapter_Statistics(t *testing.T) {
-	adapter := NewModularDetectionAdapter("")
+	adapter := integration.NewModularDetectionAdapter("")
 
 	// Process some test packets
 	packets := []gopacket.Packet{
@@ -96,7 +97,7 @@ func TestModularDetectionAdapter_Statistics(t *testing.T) {
 }
 
 func TestModularDetectionAdapter_Configuration(t *testing.T) {
-	adapter := NewModularDetectionAdapter("")
+	adapter := integration.NewModularDetectionAdapter("")
 
 	// Test configuration update
 	config := &core.Config{
@@ -120,7 +121,7 @@ func TestModularDetectionAdapter_Configuration(t *testing.T) {
 }
 
 func TestModularDetectionAdapter_CacheManagement(t *testing.T) {
-	adapter := NewModularDetectionAdapter("")
+	adapter := integration.NewModularDetectionAdapter("")
 
 	// Process same packet multiple times
 	packet := createHTTPPacket()
@@ -140,7 +141,7 @@ func TestModularDetectionAdapter_CacheManagement(t *testing.T) {
 }
 
 func TestModularDetectionAdapter_PerformanceReport(t *testing.T) {
-	adapter := NewModularDetectionAdapter("")
+	adapter := integration.NewModularDetectionAdapter("")
 
 	// Process some packets
 	packets := []gopacket.Packet{
@@ -170,7 +171,7 @@ func TestModularDetectionAdapter_PerformanceReport(t *testing.T) {
 }
 
 func TestBackwardCompatibilityWrapper(t *testing.T) {
-	wrapper := NewBackwardCompatibilityWrapper("")
+	wrapper := integration.NewBackwardCompatibilityWrapper("")
 
 	// Test old-style detection interface
 	packet := createHTTPPacket()
@@ -192,7 +193,7 @@ func TestBackwardCompatibilityWrapper(t *testing.T) {
 }
 
 func TestOptimizedDetector(t *testing.T) {
-	detector := NewOptimizedDetector("")
+	detector := integration.NewOptimizedDetector("")
 
 	// Test fast detection
 	packet := createHTTPPacket()
@@ -231,7 +232,7 @@ func TestConfigurableDetector(t *testing.T) {
 		t.Fatalf("Failed to create test config file: %v", err)
 	}
 
-	detector := NewConfigurableDetector(configPath)
+	detector := integration.NewConfigurableDetector(configPath)
 
 	// Test configuration loading
 	if err := detector.UpdateFromFile(configPath); err != nil {
@@ -362,7 +363,7 @@ func createUDPPacket(srcPort, dstPort uint16, payload []byte) gopacket.Packet {
 // Benchmark tests
 
 func BenchmarkModularDetectionAdapter_DetectProtocol(b *testing.B) {
-	adapter := NewModularDetectionAdapter("")
+	adapter := integration.NewModularDetectionAdapter("")
 	packet := createHTTPPacket()
 
 	b.ResetTimer()
@@ -372,7 +373,7 @@ func BenchmarkModularDetectionAdapter_DetectProtocol(b *testing.B) {
 }
 
 func BenchmarkOptimizedDetector_FastDetect(b *testing.B) {
-	detector := NewOptimizedDetector("")
+	detector := integration.NewOptimizedDetector("")
 	packet := createHTTPPacket()
 
 	b.ResetTimer()
@@ -382,7 +383,7 @@ func BenchmarkOptimizedDetector_FastDetect(b *testing.B) {
 }
 
 func BenchmarkBackwardCompatibilityWrapper_DetectProtocol(b *testing.B) {
-	wrapper := NewBackwardCompatibilityWrapper("")
+	wrapper := integration.NewBackwardCompatibilityWrapper("")
 	packet := createHTTPPacket()
 
 	b.ResetTimer()

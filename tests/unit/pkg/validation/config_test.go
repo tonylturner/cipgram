@@ -1,13 +1,14 @@
-package validation
+package validation_test
 
 import (
 	"testing"
 
 	"cipgram/pkg/types"
+	"cipgram/pkg/validation"
 )
 
 func TestValidateCIDR(t *testing.T) {
-	validator := NewConfigValidator()
+	validator := validation.NewConfigValidator()
 
 	testCases := []struct {
 		name    string
@@ -37,7 +38,7 @@ func TestValidateCIDR(t *testing.T) {
 }
 
 func TestValidatePurdueLevel(t *testing.T) {
-	validator := NewConfigValidator()
+	validator := validation.NewConfigValidator()
 
 	testCases := []struct {
 		name    string
@@ -66,7 +67,7 @@ func TestValidatePurdueLevel(t *testing.T) {
 }
 
 func TestValidateRole(t *testing.T) {
-	validator := NewConfigValidator()
+	validator := validation.NewConfigValidator()
 
 	testCases := []struct {
 		name    string
@@ -93,7 +94,7 @@ func TestValidateRole(t *testing.T) {
 }
 
 func TestValidateProtocol(t *testing.T) {
-	validator := NewConfigValidator()
+	validator := validation.NewConfigValidator()
 
 	testCases := []struct {
 		name     string
@@ -120,7 +121,7 @@ func TestValidateProtocol(t *testing.T) {
 }
 
 func TestValidateMAC(t *testing.T) {
-	validator := NewConfigValidator()
+	validator := validation.NewConfigValidator()
 
 	testCases := []struct {
 		name    string
@@ -147,7 +148,7 @@ func TestValidateMAC(t *testing.T) {
 }
 
 func TestValidateAsset(t *testing.T) {
-	validator := NewConfigValidator()
+	validator := validation.NewConfigValidator()
 
 	validAsset := &types.Asset{
 		ID:           "192.168.1.10",
@@ -183,7 +184,7 @@ func TestValidateAsset(t *testing.T) {
 }
 
 func TestValidateSubnetMapping(t *testing.T) {
-	validator := NewConfigValidator()
+	validator := validation.NewConfigValidator()
 
 	validMapping := &types.SubnetMapping{
 		CIDR:  "192.168.1.0/24",
@@ -214,7 +215,7 @@ func TestValidateSubnetMapping(t *testing.T) {
 }
 
 func TestValidateMappingTable(t *testing.T) {
-	validator := NewConfigValidator()
+	validator := validation.NewConfigValidator()
 
 	validTable := &types.MappingTable{
 		Mappings: []types.SubnetMapping{
@@ -252,7 +253,7 @@ func TestValidateMappingTable(t *testing.T) {
 }
 
 func TestValidateHostname(t *testing.T) {
-	validator := NewConfigValidator()
+	validator := validation.NewConfigValidator()
 
 	testCases := []struct {
 		name     string
