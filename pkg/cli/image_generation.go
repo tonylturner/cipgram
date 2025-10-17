@@ -13,7 +13,7 @@ func (a *App) generateImageEmbedded(dotPath string) error {
 	// Check if dot is available
 	if _, err := exec.LookPath("dot"); err != nil {
 		log.Printf("Warning: Graphviz 'dot' not found - skipping image generation")
-		log.Printf("💡 Install Graphviz to generate PNG/SVG images: https://graphviz.org/download/")
+		log.Printf("Install Graphviz to generate PNG/SVG images: https://graphviz.org/download/")
 		return nil // Don't return error, just skip
 	}
 
@@ -64,13 +64,13 @@ func (a *App) generateImageEmbedded(dotPath string) error {
 // checkGraphvizInstallation checks if Graphviz is available and provides helpful feedback
 func checkGraphvizInstallation() {
 	if _, err := exec.LookPath("dot"); err != nil {
-		log.Printf("⚠️  Graphviz not found - diagrams will be generated as DOT files only")
-		log.Printf("💡 To generate PNG/SVG images, install Graphviz:")
-		log.Printf("   • macOS: brew install graphviz")
-		log.Printf("   • Ubuntu/Debian: sudo apt install graphviz")
-		log.Printf("   • Windows: Download from https://graphviz.org/download/")
-		log.Printf("   • Or use online converter: https://dreampuf.github.io/GraphvizOnline/")
+		log.Printf("WARNING: Graphviz not found - diagrams will be generated as DOT files only")
+		log.Printf("To generate PNG/SVG images, install Graphviz:")
+		log.Printf("   - macOS: brew install graphviz")
+		log.Printf("   - Ubuntu/Debian: sudo apt install graphviz")
+		log.Printf("   - Windows: Download from https://graphviz.org/download/")
+		log.Printf("   - Or use online converter: https://dreampuf.github.io/GraphvizOnline/")
 	} else {
-		log.Printf("✅ Graphviz found - will generate PNG/SVG images")
+		log.Printf("Graphviz found - will generate PNG/SVG images")
 	}
 }

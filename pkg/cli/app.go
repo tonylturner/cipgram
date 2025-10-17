@@ -158,8 +158,8 @@ func (a *App) runPCAPAnalysis() error {
 		return fmt.Errorf("failed to create output paths: %v", err)
 	}
 
-	fmt.Printf("🎯 CIPgram PCAP Analysis - Project: %s\n", a.config.ProjectName)
-	fmt.Printf("📁 Output directory: %s\n", paths.ProjectRoot)
+	fmt.Printf("CIPgram PCAP Analysis - Project: %s\n", a.config.ProjectName)
+	fmt.Printf("Output directory: %s\n", paths.ProjectRoot)
 
 	// Check Graphviz installation if images are requested
 	if a.config.GenerateImages {
@@ -178,8 +178,8 @@ func (a *App) runConfigAnalysis() error {
 		return fmt.Errorf("failed to create output paths: %v", err)
 	}
 
-	fmt.Printf("🎯 CIPgram Config Analysis - Project: %s\n", a.config.ProjectName)
-	fmt.Printf("📁 Output directory: %s\n", paths.ProjectRoot)
+	fmt.Printf("CIPgram Config Analysis - Project: %s\n", a.config.ProjectName)
+	fmt.Printf("Output directory: %s\n", paths.ProjectRoot)
 
 	// Check Graphviz installation if images are requested
 	if a.config.GenerateImages {
@@ -198,10 +198,10 @@ func (a *App) runCombinedAnalysis() error {
 		return fmt.Errorf("failed to create output paths: %v", err)
 	}
 
-	fmt.Printf("🎯 CIPgram Combined Analysis - Project: %s\n", a.config.ProjectName)
-	fmt.Printf("📁 Output directory: %s\n", paths.ProjectRoot)
-	fmt.Printf("📊 PCAP file: %s\n", a.config.PcapPath)
-	fmt.Printf("🔧 Config file: %s\n", a.config.FirewallConfig)
+	fmt.Printf("CIPgram Combined Analysis - Project: %s\n", a.config.ProjectName)
+	fmt.Printf("Output directory: %s\n", paths.ProjectRoot)
+	fmt.Printf("PCAP file: %s\n", a.config.PcapPath)
+	fmt.Printf("Config file: %s\n", a.config.FirewallConfig)
 
 	// Check Graphviz installation if images are requested
 	if a.config.GenerateImages {
@@ -218,17 +218,17 @@ func (a *App) runCombinedAnalysis() error {
 	//    - Asset validation against firewall configuration
 	// 4. Generate enhanced reports with compliance scoring
 
-	fmt.Printf("⚠️  Combined analysis feature under development!\n")
-	fmt.Printf("💡 Use separate 'pcap' and 'config' commands for now\n")
-	fmt.Printf("🔬 This feature will cross-correlate traffic patterns with firewall policies\n")
+	fmt.Printf("WARNING: Combined analysis feature under development!\n")
+	fmt.Printf("Use separate 'pcap' and 'config' commands for now\n")
+	fmt.Printf("This feature will cross-correlate traffic patterns with firewall policies\n")
 
 	return nil
 }
 
 // runFirewallAnalysis performs firewall-only analysis
 func (a *App) runFirewallAnalysis(paths *output.OutputPaths) error {
-	log.Printf("🔧 Firewall Configuration Analysis")
-	log.Printf("📊 Config file: %s", a.config.FirewallConfig)
+	log.Printf("Firewall Configuration Analysis")
+	log.Printf("Config file: %s", a.config.FirewallConfig)
 
 	// Create parser factory and detect/parse firewall config
 	factory := &firewall.ParserFactory{}
@@ -252,18 +252,18 @@ func (a *App) runFirewallAnalysis(paths *output.OutputPaths) error {
 		return fmt.Errorf("failed to parse firewall config: %v", err)
 	}
 
-	log.Printf("✅ Parsed configuration: %d networks, %d policies", len(model.Networks), len(model.Policies))
+	log.Printf("Parsed configuration: %d networks, %d policies", len(model.Networks), len(model.Policies))
 
 	// Create firewall diagram generator
 	generator := writers.NewFirewallDiagramGenerator(model)
 
 	// Generate network topology diagram
 	topologyPath := filepath.Join(paths.FirewallAnalysis, "network_topology.dot")
-	log.Printf("🌐 Generating network topology diagram...")
+	log.Printf("Generating network topology diagram...")
 	if err := generator.GenerateNetworkTopologyDiagram(topologyPath); err != nil {
 		log.Printf("Warning: Failed to generate topology diagram: %v", err)
 	} else {
-		log.Printf("✅ Network topology: %s", topologyPath)
+		log.Printf("Network topology: %s", topologyPath)
 
 		// Generate image if requested
 		if a.config.GenerateImages {
@@ -275,20 +275,20 @@ func (a *App) runFirewallAnalysis(paths *output.OutputPaths) error {
 
 	// Generate firewall rules summary
 	rulesPath := filepath.Join(paths.FirewallAnalysis, "firewall_rules.txt")
-	log.Printf("📋 Generating firewall rules summary...")
+	log.Printf("Generating firewall rules summary...")
 	if err := generator.GenerateFirewallRulesSummary(rulesPath); err != nil {
 		log.Printf("Warning: Failed to generate rules summary: %v", err)
 	} else {
-		log.Printf("✅ Firewall rules: %s", rulesPath)
+		log.Printf("Firewall rules: %s", rulesPath)
 	}
 
 	// Generate IEC 62443 zone diagram
 	zonePath := filepath.Join(paths.IEC62443Diagrams, "iec62443_zones.dot")
-	log.Printf("🏭 Generating IEC 62443 zone diagram...")
+	log.Printf("Generating IEC 62443 zone diagram...")
 	if err := generator.GenerateIEC62443ZoneDiagram(zonePath); err != nil {
 		log.Printf("Warning: Failed to generate zone diagram: %v", err)
 	} else {
-		log.Printf("✅ IEC 62443 zones: %s", zonePath)
+		log.Printf("IEC 62443 zones: %s", zonePath)
 
 		// Generate image if requested
 		if a.config.GenerateImages {
@@ -329,22 +329,22 @@ func (a *App) runPCAPAnalysisWithPaths(paths *output.OutputPaths) error {
 
 // displayFirewallSummary displays a summary of the firewall analysis
 func (a *App) displayFirewallSummary(model *types.NetworkModel) {
-	log.Printf("\n🎓 Firewall Analysis Summary:")
-	log.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Printf("\nFirewall Analysis Summary:")
+	log.Printf("================================")
 
 	if len(model.Networks) > 0 {
-		log.Printf("📊 Network Segments:")
+		log.Printf("Network Segments:")
 		for _, network := range model.Networks {
-			log.Printf("  • %s (%s) → %s zone, %s risk",
+			log.Printf("  - %s (%s) -> %s zone, %s risk",
 				network.ID, network.CIDR, network.Zone, network.Risk)
 		}
 	}
 
 	if len(model.Policies) > 0 {
-		log.Printf("🔒 Security Policies:")
+		log.Printf("Security Policies:")
 		for i, policy := range model.Policies {
 			if i < 5 { // Show first 5 policies
-				log.Printf("  • %s → %s (%s)",
+				log.Printf("  - %s -> %s (%s)",
 					policy.Source.CIDR, policy.Destination.CIDR, policy.Action)
 			}
 		}
@@ -353,16 +353,16 @@ func (a *App) displayFirewallSummary(model *types.NetworkModel) {
 		}
 	}
 
-	log.Printf("\n🎯 Analysis complete! Check the output directory for detailed results.")
+	log.Printf("\nAnalysis complete! Check the output directory for detailed results.")
 }
 
 // displayPCAPSummary displays a summary of the PCAP analysis
 func (a *App) displayPCAPSummary(model *types.NetworkModel) {
-	log.Printf("\n🎓 PCAP Analysis Summary:")
-	log.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Printf("\nPCAP Analysis Summary:")
+	log.Printf("================================")
 
 	if len(model.Assets) > 0 {
-		log.Printf("📊 Discovered Assets:")
+		log.Printf("Discovered Assets:")
 		vendorCount := 0
 		hostnameCount := 0
 
@@ -378,7 +378,7 @@ func (a *App) displayPCAPSummary(model *types.NetworkModel) {
 					hostname = "No hostname"
 				}
 
-				log.Printf("  • %s [%s] - %s (%s)",
+				log.Printf("  - %s [%s] - %s (%s)",
 					asset.IP, asset.MAC[:8]+"...", vendor, hostname)
 			}
 
@@ -394,29 +394,29 @@ func (a *App) displayPCAPSummary(model *types.NetworkModel) {
 			log.Printf("  ... and %d more assets", len(model.Assets)-5)
 		}
 
-		log.Printf("📈 Statistics:")
-		log.Printf("  • Total assets: %d", len(model.Assets))
-		log.Printf("  • Vendor identified: %d", vendorCount)
-		log.Printf("  • Hostnames resolved: %d", hostnameCount)
+		log.Printf("Statistics:")
+		log.Printf("  - Total assets: %d", len(model.Assets))
+		log.Printf("  - Vendor identified: %d", vendorCount)
+		log.Printf("  - Hostnames resolved: %d", hostnameCount)
 	}
 
 	if len(model.Flows) > 0 {
-		log.Printf("🔄 Communication Flows:")
+		log.Printf("Communication Flows:")
 		protocolStats := make(map[types.Protocol]int)
 
 		for _, flow := range model.Flows {
 			protocolStats[flow.Protocol]++
 		}
 
-		log.Printf("  • Total flows: %d", len(model.Flows))
+		log.Printf("  - Total flows: %d", len(model.Flows))
 		for proto, count := range protocolStats {
 			if count > 0 {
-				log.Printf("  • %s: %d flows", proto, count)
+				log.Printf("  - %s: %d flows", proto, count)
 			}
 		}
 	}
 
-	log.Printf("\n🎯 Analysis complete! Check the output directory for detailed results.")
+	log.Printf("\nAnalysis complete! Check the output directory for detailed results.")
 }
 
 // checkWritePermission checks if we can write to the target directory
