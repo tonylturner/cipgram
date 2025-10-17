@@ -55,28 +55,19 @@ func NewPCAPParser(pcapPath string, config *PCAPConfig) *PCAPParser {
 	}
 }
 
-// Parse implements InputSource.Parse for PCAP files using new data structures
+// Parse implements InputSource.Parse for PCAP files using sequential processing
 func (p *PCAPParser) Parse() (*types.NetworkModel, error) {
-	// Check file size to decide processing strategy
+	// Check file size for logging
 	info, err := os.Stat(p.pcapPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat PCAP file: %v", err)
 	}
 
-	// Use parallel processing for files larger than 100MB or when not in fast mode
-	const parallelThreshold = 100 * 1024 * 1024 // 100MB
-	useParallel := info.Size() > parallelThreshold && !p.config.FastMode
-
-	if useParallel {
-		log.Printf("📈 Large file detected (%d MB), using parallel processing", info.Size()/(1024*1024))
-		return p.parseWithWorkerPool()
-	} else {
-		log.Printf("📊 Using sequential processing for file (%d MB)", info.Size()/(1024*1024))
-		return p.parseSequential()
-	}
+	log.Printf("📊 Processing PCAP file (%d MB) using optimized sequential processing", info.Size()/(1024*1024))
+	return p.parseSequential()
 }
 
-// parseSequential processes packets sequentially (original implementation)
+// parseSequential processes packets sequentially with optimized performance
 func (p *PCAPParser) parseSequential() (*types.NetworkModel, error) {
 	// Open PCAP file
 	handle, err := pcap.OpenOffline(p.pcapPath)
@@ -99,8 +90,8 @@ func (p *PCAPParser) parseSequential() (*types.NetworkModel, error) {
 
 	for packet := range src.Packets() {
 		packetCount++
-		if packetCount%1000 == 0 {
-			// Progress indication could go here
+		if packetCount%10000 == 0 {
+			log.Printf("📦 Processed %d packets...", packetCount)
 		}
 
 		if err := p.processPacket(packet, model); err != nil {
@@ -110,46 +101,7 @@ func (p *PCAPParser) parseSequential() (*types.NetworkModel, error) {
 		}
 	}
 
-	// Post-processing: deduplicate, classify, enhance
-	p.enhanceModel(model)
-
-	// Infer network segments from traffic patterns
-	p.inferNetworkSegments(model)
-
-	return model, nil
-}
-
-// parseWithWorkerPool processes packets in parallel using worker pool
-func (p *PCAPParser) parseWithWorkerPool() (*types.NetworkModel, error) {
-	// Open PCAP file
-	handle, err := pcap.OpenOffline(p.pcapPath)
-	if err != nil {
-		return nil, err
-	}
-	defer handle.Close()
-
-	// Create and start worker pool
-	wp := NewWorkerPool(p, 0) // Use default number of workers
-	wp.Start()
-
-	// Feed packets to worker pool
-	src := gopacket.NewPacketSource(handle, handle.LinkType())
-	packetCount := 0
-
-	for packet := range src.Packets() {
-		packetCount++
-		wp.ProcessPacket(packet)
-
-		if packetCount%5000 == 0 {
-			log.Printf("📦 Queued %d packets for processing", packetCount)
-		}
-	}
-
-	log.Printf("📋 Finished reading %d packets, waiting for processing to complete...", packetCount)
-
-	// Wait for processing to complete and get results
-	model := wp.Wait()
-	model.Metadata = p.GetMetadata()
+	log.Printf("✅ Processed %d packets total", packetCount)
 
 	// Post-processing: deduplicate, classify, enhance
 	p.enhanceModel(model)
