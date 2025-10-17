@@ -13,6 +13,7 @@
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+*.prof
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
@@ -21,14 +22,70 @@
 go.work
 go.work.sum
 
-# env file
+# Environment files
 .env
+.env.local
+.env.*.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+output/.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
 
 # CIPgram specific
 output/
 .oui_cache/
 .backup_old_files/
 cipgram
+cipgram.exe
 main_old.go
 
-.DS_STORE
+# Network analysis data (sensitive)
+pcaps/
+configs/
+*.pcap
+*.pcapng
+*.cap
+
+# Certificates and keys (security)
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.backup
+
+# Test coverage
+coverage.txt
+coverage.html
+coverage.out

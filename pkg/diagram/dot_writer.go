@@ -21,7 +21,7 @@ const (
 	NetworkDiagram DiagramType = "network"
 )
 
-func writeDOT(g *types.Graph, path string, diagramType DiagramType) error {
+func WriteDOT(g *types.Graph, path string, diagramType DiagramType) error {
 	switch diagramType {
 	case NetworkDiagram:
 		return writeNetworkDOT(g, path)

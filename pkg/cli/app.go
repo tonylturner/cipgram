@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -425,6 +426,43 @@ func (a *App) runPCAPAnalysisWithPaths(paths *output.OutputPaths) error {
 	}
 
 	log.Printf("✅ Parsed PCAP: %d assets, %d flows", len(model.Assets), len(model.Flows))
+
+	// Convert NetworkModel to Graph for proper PCAP diagram generation
+	graph := a.convertNetworkModelToGraph(model)
+
+	log.Printf("🌐 Generating PCAP network diagrams...")
+	log.Printf("📁 Output directory: %s", paths.NetworkDiagrams)
+
+	// Generate Purdue model diagram (traditional Purdue with horizontal bars)
+	purdueBasePath := filepath.Join(paths.NetworkDiagrams, "purdue_diagram")
+	log.Printf("🏭 Generating traditional Purdue model diagram...")
+	if err := a.generatePurdueModelDiagrams(graph, purdueBasePath, model); err != nil {
+		log.Printf("Warning: Failed to generate Purdue diagrams: %v", err)
+	} else {
+		log.Printf("✅ Purdue model diagrams: %s.{dot,json,svg,png}", purdueBasePath)
+	}
+
+	// Generate network topology diagram (traditional network with router/firewall center)
+	networkBasePath := filepath.Join(paths.NetworkDiagrams, "network_topology")
+	log.Printf("🌐 Generating traditional network topology diagram...")
+	if err := a.generateNetworkTopologyDiagrams(graph, networkBasePath, model); err != nil {
+		log.Printf("Warning: Failed to generate network diagrams: %v", err)
+	} else {
+		log.Printf("✅ Network topology diagrams: %s.{dot,json,svg,png}", networkBasePath)
+	}
+
+	// Save JSON output if requested
+	if a.config.OutJSON != "" {
+		log.Printf("💾 Saving analysis data...")
+		jsonData, err := json.MarshalIndent(model, "", "  ")
+		if err != nil {
+			log.Printf("Warning: Failed to marshal JSON: %v", err)
+		} else if err := os.WriteFile(a.config.OutJSON, jsonData, 0644); err != nil {
+			log.Printf("Warning: Failed to save JSON: %v", err)
+		} else {
+			log.Printf("✅ Analysis data: %s", a.config.OutJSON)
+		}
+	}
 
 	// Display analysis summary
 	a.displayPCAPSummary(model)
@@ -917,5 +955,125 @@ func (a *App) addCompletionToFile(configFile, script string) error {
 	}
 
 	fmt.Printf("Tab completion added to %s\n", filepath.Base(configFile))
+	return nil
+}
+
+// convertNetworkModelToGraph converts a NetworkModel (from PCAP) to a Graph for diagram generation
+func (a *App) convertNetworkModelToGraph(model *types.NetworkModel) *types.Graph {
+	graph := &types.Graph{
+		Hosts: make(map[string]*types.Host),
+		Edges: make(map[types.FlowKey]*types.Edge),
+	}
+
+	// Convert Assets to Hosts
+	for _, asset := range model.Assets {
+		host := &types.Host{
+			IP:                    asset.IP,
+			MAC:                   asset.MAC,
+			Hostname:              asset.Hostname,
+			DeviceName:            asset.DeviceName,
+			Vendor:                asset.Vendor,
+			InferredLevel:         asset.PurdueLevel,
+			Roles:                 asset.Roles,
+			PortsSeen:             make(map[uint16]bool),
+			PeersByProtoInitiated: make(map[types.Protocol]map[string]bool),
+			PeersByProtoReceived:  make(map[types.Protocol]map[string]bool),
+			InitiatedCounts:       make(map[types.Protocol]int),
+			ReceivedCounts:        make(map[types.Protocol]int),
+		}
+
+		// Initialize protocol maps
+		for _, proto := range asset.Protocols {
+			host.PeersByProtoInitiated[proto] = make(map[string]bool)
+			host.PeersByProtoReceived[proto] = make(map[string]bool)
+		}
+
+		graph.Hosts[asset.ID] = host
+	}
+
+	// Convert Flows to Edges
+	for flowKey, flow := range model.Flows {
+		edge := &types.Edge{
+			Src:       flow.Source,
+			Dst:       flow.Destination,
+			Protocol:  flow.Protocol,
+			Packets:   int(flow.Packets),
+			Bytes:     flow.Bytes,
+			FirstSeen: flow.FirstSeen,
+			LastSeen:  flow.LastSeen,
+		}
+
+		// Infer Purdue level from source host if available
+		if srcHost, exists := graph.Hosts[flow.Source]; exists {
+			edge.InferredLevel = srcHost.InferredLevel
+		}
+
+		graph.Edges[flowKey] = edge
+	}
+
+	return graph
+}
+
+// generatePurdueModelDiagrams creates traditional Purdue model with horizontal bars per level
+func (a *App) generatePurdueModelDiagrams(graph *types.Graph, basePath string, model *types.NetworkModel) error {
+	// Generate DOT file with traditional Purdue layout
+	dotPath := basePath + ".dot"
+	if err := a.generateTraditionalPurdueDOT(graph, dotPath); err != nil {
+		return fmt.Errorf("failed to generate Purdue DOT: %v", err)
+	}
+
+	// Generate JSON file with graph data
+	jsonPath := basePath + ".json"
+	if err := a.generateGraphJSON(graph, model, jsonPath); err != nil {
+		return fmt.Errorf("failed to generate Purdue JSON: %v", err)
+	}
+
+	// Generate images if requested
+	if a.config.GenerateImages {
+		// Generate SVG
+		svgPath := basePath + ".svg"
+		if err := a.generateSVGFromDOT(dotPath, svgPath); err != nil {
+			log.Printf("SVG generation warning: %v", err)
+		}
+
+		// Generate PNG from SVG
+		pngPath := basePath + ".png"
+		if err := a.generatePNGFromSVG(svgPath, pngPath); err != nil {
+			log.Printf("PNG generation warning: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// generateNetworkTopologyDiagrams creates traditional network diagram with router/firewall center
+func (a *App) generateNetworkTopologyDiagrams(graph *types.Graph, basePath string, model *types.NetworkModel) error {
+	// Generate DOT file with traditional network topology layout
+	dotPath := basePath + ".dot"
+	if err := a.generateTraditionalNetworkDOT(graph, dotPath); err != nil {
+		return fmt.Errorf("failed to generate network DOT: %v", err)
+	}
+
+	// Generate JSON file with graph data
+	jsonPath := basePath + ".json"
+	if err := a.generateGraphJSON(graph, model, jsonPath); err != nil {
+		return fmt.Errorf("failed to generate network JSON: %v", err)
+	}
+
+	// Generate images if requested
+	if a.config.GenerateImages {
+		// Generate SVG
+		svgPath := basePath + ".svg"
+		if err := a.generateSVGFromDOT(dotPath, svgPath); err != nil {
+			log.Printf("SVG generation warning: %v", err)
+		}
+
+		// Generate PNG from SVG
+		pngPath := basePath + ".png"
+		if err := a.generatePNGFromSVG(svgPath, pngPath); err != nil {
+			log.Printf("PNG generation warning: %v", err)
+		}
+	}
+
 	return nil
 }
