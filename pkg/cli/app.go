@@ -451,6 +451,14 @@ func (a *App) runPCAPAnalysisWithPaths(paths *output.OutputPaths) error {
 		log.Printf("✅ Network topology diagrams: %s.{dot,json,svg,png}", networkBasePath)
 	}
 
+	// Generate CSV conversation analysis
+	log.Printf("📊 Generating conversation analysis CSV...")
+	if err := a.generateConversationCSV(model, paths); err != nil {
+		log.Printf("Warning: Failed to generate conversation CSV: %v", err)
+	} else {
+		log.Printf("✅ Conversation analysis: %s/data/conversations.csv", paths.ProjectRoot)
+	}
+
 	// Save JSON output if requested
 	if a.config.OutJSON != "" {
 		log.Printf("💾 Saving analysis data...")
@@ -1050,7 +1058,7 @@ func (a *App) generatePurdueModelDiagrams(graph *types.Graph, basePath string, m
 func (a *App) generateNetworkTopologyDiagrams(graph *types.Graph, basePath string, model *types.NetworkModel) error {
 	// Generate DOT file with traditional network topology layout
 	dotPath := basePath + ".dot"
-	if err := a.generateTraditionalNetworkDOT(graph, dotPath); err != nil {
+	if err := a.generateTraditionalNetworkDOT(graph, dotPath, model); err != nil {
 		return fmt.Errorf("failed to generate network DOT: %v", err)
 	}
 
