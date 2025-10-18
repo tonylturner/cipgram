@@ -2,7 +2,10 @@ package performance
 
 import (
 	"cipgram/pkg/logging"
+	"cipgram/pkg/pcap/profiling"
 	"cipgram/pkg/types"
+	"context"
+	"fmt"
 	"runtime"
 	"sync"
 	"time"
@@ -35,6 +38,11 @@ type PerformanceOptimizer struct {
 	reusableBuffers [][]byte
 	bufferIndex     int
 	bufferMutex     sync.Mutex
+
+	// Memory profiling
+	memoryProfiler  *profiling.MemoryProfiler
+	profilingCtx    context.Context
+	profilingCancel context.CancelFunc
 }
 
 // OptimizationConfig contains performance optimization settings
@@ -47,6 +55,10 @@ type OptimizationConfig struct {
 	PoolPreallocation     int
 	GCOptimization        bool
 	MemoryProfileInterval time.Duration
+
+	// Memory profiling
+	EnableMemoryProfiling bool                      `json:"enable_memory_profiling"`
+	ProfilerConfig        *profiling.ProfilerConfig `json:"profiler_config,omitempty"`
 }
 
 // PerformanceStats tracks performance metrics
@@ -95,6 +107,11 @@ func NewPerformanceOptimizer(config *OptimizationConfig) *PerformanceOptimizer {
 	optimizer.initializePools()
 	optimizer.initializeBuffers()
 
+	// Initialize memory profiling if enabled
+	if config.EnableMemoryProfiling {
+		optimizer.initializeMemoryProfiling()
+	}
+
 	if config.MemoryProfileInterval > 0 {
 		go optimizer.startMemoryProfiler()
 	}
@@ -113,6 +130,8 @@ func GetDefaultConfig() *OptimizationConfig {
 		PoolPreallocation:     10000,
 		GCOptimization:        true,
 		MemoryProfileInterval: 30 * time.Second,
+		EnableMemoryProfiling: false, // Disabled by default
+		ProfilerConfig:        profiling.GetDefaultProfilerConfig(),
 	}
 }
 
@@ -183,6 +202,30 @@ func (po *PerformanceOptimizer) initializeBuffers() {
 	po.logger.Info("Zero-copy buffers initialized", map[string]interface{}{
 		"buffer_count": len(po.reusableBuffers),
 		"buffer_size":  po.config.MaxBufferSize,
+	})
+}
+
+// initializeMemoryProfiling initializes memory profiling
+func (po *PerformanceOptimizer) initializeMemoryProfiling() {
+	if po.config.ProfilerConfig == nil {
+		po.config.ProfilerConfig = profiling.GetDefaultProfilerConfig()
+	}
+
+	po.memoryProfiler = profiling.NewMemoryProfiler(po.config.ProfilerConfig)
+	po.profilingCtx, po.profilingCancel = context.WithCancel(context.Background())
+
+	// Start the profiler
+	if err := po.memoryProfiler.Start(po.profilingCtx); err != nil {
+		po.logger.Error("Failed to start memory profiler", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	po.logger.Info("Memory profiling initialized", map[string]interface{}{
+		"http_enabled":     po.config.ProfilerConfig.EnableHTTPServer,
+		"http_addr":        po.config.ProfilerConfig.HTTPAddr,
+		"monitor_interval": po.config.ProfilerConfig.MonitorInterval,
 	})
 }
 
@@ -455,6 +498,11 @@ func (po *PerformanceOptimizer) PrintPerformanceReport() {
 		"gc_collections":     stats.GCCollections,
 		"packets_per_second": float64(stats.PacketsProcessed) / time.Since(stats.StartTime).Seconds(),
 	})
+
+	// Print memory profiling report if enabled
+	if po.memoryProfiler != nil {
+		po.memoryProfiler.PrintMemoryReport()
+	}
 }
 
 // startMemoryProfiler starts the memory profiler goroutine
@@ -480,6 +528,66 @@ func (po *PerformanceOptimizer) startMemoryProfiler() {
 			po.OptimizeGC()
 		}
 	}
+}
+
+// GetMemoryStats returns memory profiling statistics
+func (po *PerformanceOptimizer) GetMemoryStats() *profiling.MemoryStats {
+	if po.memoryProfiler == nil {
+		return nil
+	}
+
+	stats := po.memoryProfiler.GetStats()
+	return &stats
+}
+
+// TakeHeapProfile takes a heap profile and saves it to file
+func (po *PerformanceOptimizer) TakeHeapProfile(filename string) error {
+	if po.memoryProfiler == nil {
+		return fmt.Errorf("memory profiler not enabled")
+	}
+
+	return po.memoryProfiler.TakeHeapProfile(filename)
+}
+
+// TakeCPUProfile takes a CPU profile for the specified duration
+func (po *PerformanceOptimizer) TakeCPUProfile(filename string, duration time.Duration) error {
+	if po.memoryProfiler == nil {
+		return fmt.Errorf("memory profiler not enabled")
+	}
+
+	return po.memoryProfiler.TakeCPUProfile(filename, duration)
+}
+
+// EnableMemoryProfiling enables memory profiling at runtime
+func (po *PerformanceOptimizer) EnableMemoryProfiling() error {
+	if po.memoryProfiler != nil {
+		return fmt.Errorf("memory profiler already enabled")
+	}
+
+	po.config.EnableMemoryProfiling = true
+	po.initializeMemoryProfiling()
+	return nil
+}
+
+// DisableMemoryProfiling disables memory profiling
+func (po *PerformanceOptimizer) DisableMemoryProfiling() error {
+	if po.memoryProfiler == nil {
+		return fmt.Errorf("memory profiler not enabled")
+	}
+
+	if err := po.memoryProfiler.Stop(); err != nil {
+		return fmt.Errorf("failed to stop memory profiler: %w", err)
+	}
+
+	if po.profilingCancel != nil {
+		po.profilingCancel()
+	}
+
+	po.memoryProfiler = nil
+	po.config.EnableMemoryProfiling = false
+
+	po.logger.Info("Memory profiling disabled", nil)
+	return nil
 }
 
 // Cleanup performs cleanup operations

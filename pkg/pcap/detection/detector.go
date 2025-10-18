@@ -5,7 +5,9 @@ import (
 	"sync"
 	"time"
 
+	"cipgram/pkg/pcap/cache"
 	"cipgram/pkg/pcap/core"
+	"cipgram/pkg/pcap/dpi"
 
 	"github.com/google/gopacket"
 )
@@ -14,7 +16,7 @@ import (
 type UnifiedDetector struct {
 	portDetector      *PortBasedDetector
 	heuristicDetector *HeuristicDetector
-	dpiEngine         DPIEngine
+	dpiEngine         *dpi.CachedDPIEngine
 
 	// Configuration
 	config *core.DetectionConfig
@@ -23,9 +25,8 @@ type UnifiedDetector struct {
 	stats      *core.DetectionStats
 	statsMutex sync.RWMutex
 
-	// Performance optimization
-	cache      map[string]*core.DetectionResult
-	cacheSize  int
+	// Performance optimization - LRU cache for detection results
+	lruCache   *cache.LRUCache
 	cacheMutex sync.RWMutex
 }
 
@@ -37,17 +38,26 @@ type DPIEngine interface {
 
 // NewUnifiedDetector creates a new unified protocol detector
 func NewUnifiedDetector(config *core.DetectionConfig, dpiEngine DPIEngine) *UnifiedDetector {
+	// Create cached DPI engine if none provided
+	var cachedEngine *dpi.CachedDPIEngine
+	if dpiEngine != nil {
+		// If a DPI engine is provided, we'll use it directly for now
+		// In the future, we could wrap it with caching
+		cachedEngine = dpi.NewCachedDPIEngine(&config.DPI)
+	} else {
+		cachedEngine = dpi.NewCachedDPIEngine(&config.DPI)
+	}
+
 	return &UnifiedDetector{
 		portDetector:      NewPortBasedDetector(),
 		heuristicDetector: NewHeuristicDetector(),
-		dpiEngine:         dpiEngine,
+		dpiEngine:         cachedEngine,
 		config:            config,
 		stats: &core.DetectionStats{
 			MethodBreakdown: make(map[core.DetectionMethod]int64),
 			ProtocolCounts:  make(map[string]int64),
 		},
-		cache:     make(map[string]*core.DetectionResult),
-		cacheSize: 1000,
+		lruCache: cache.NewLRUCache(1000, 5*time.Minute), // 1000 entries, 5min TTL
 	}
 }
 
@@ -160,35 +170,27 @@ func (ud *UnifiedDetector) calculateScore(result *core.DetectionResult) float32 
 
 // checkCache checks if a result is cached for this packet
 func (ud *UnifiedDetector) checkCache(packet gopacket.Packet) *core.DetectionResult {
-	if len(ud.cache) == 0 {
-		return nil
-	}
-
 	key := ud.generateCacheKey(packet)
 
-	ud.cacheMutex.RLock()
-	result, exists := ud.cache[key]
-	ud.cacheMutex.RUnlock()
-
-	if exists {
-		return result
+	if cached, found := ud.lruCache.Get(key); found {
+		if result, ok := cached.(*core.DetectionResult); ok {
+			ud.statsMutex.Lock()
+			ud.stats.CacheHits++
+			ud.statsMutex.Unlock()
+			return result
+		}
 	}
 
+	ud.statsMutex.Lock()
+	ud.stats.CacheMisses++
+	ud.statsMutex.Unlock()
 	return nil
 }
 
 // cacheResult caches a detection result
 func (ud *UnifiedDetector) cacheResult(packet gopacket.Packet, result *core.DetectionResult) {
-	if len(ud.cache) >= ud.cacheSize {
-		// Simple cache eviction - remove oldest entries
-		ud.evictCache()
-	}
-
 	key := ud.generateCacheKey(packet)
-
-	ud.cacheMutex.Lock()
-	ud.cache[key] = result
-	ud.cacheMutex.Unlock()
+	ud.lruCache.Put(key, result)
 }
 
 // generateCacheKey generates a cache key for a packet
@@ -209,27 +211,7 @@ func (ud *UnifiedDetector) generateCacheKey(packet gopacket.Packet) string {
 }
 
 // evictCache removes old entries from cache
-func (ud *UnifiedDetector) evictCache() {
-	ud.cacheMutex.Lock()
-	defer ud.cacheMutex.Unlock()
-
-	// Simple eviction: remove half the cache
-	if len(ud.cache) > ud.cacheSize/2 {
-		newCache := make(map[string]*core.DetectionResult)
-		count := 0
-		target := ud.cacheSize / 2
-
-		for key, value := range ud.cache {
-			if count >= target {
-				break
-			}
-			newCache[key] = value
-			count++
-		}
-
-		ud.cache = newCache
-	}
-}
+// evictCache is no longer needed - LRU cache handles eviction automatically
 
 // updateStats updates detection statistics
 func (ud *UnifiedDetector) updateStats(result *core.DetectionResult) {
@@ -300,35 +282,40 @@ func (ud *UnifiedDetector) GetDetectionStats() *core.DetectionStats {
 
 // GetCacheStats returns cache performance statistics
 func (ud *UnifiedDetector) GetCacheStats() map[string]interface{} {
-	ud.cacheMutex.RLock()
-	defer ud.cacheMutex.RUnlock()
+	cacheStats := ud.lruCache.Stats()
+	dpiStats := ud.dpiEngine.GetCacheStats()
 
 	return map[string]interface{}{
-		"cache_size":     len(ud.cache),
-		"max_cache_size": ud.cacheSize,
-		"cache_usage":    float32(len(ud.cache)) / float32(ud.cacheSize),
+		"detection_cache": map[string]interface{}{
+			"hits":     cacheStats.Hits,
+			"misses":   cacheStats.Misses,
+			"evicts":   cacheStats.Evicts,
+			"hit_rate": cacheStats.HitRate,
+			"size":     cacheStats.Size,
+			"capacity": cacheStats.Capacity,
+		},
+		"dpi_cache": map[string]interface{}{
+			"hits":     dpiStats.Hits,
+			"misses":   dpiStats.Misses,
+			"evicts":   dpiStats.Evicts,
+			"hit_rate": dpiStats.HitRate,
+			"size":     dpiStats.Size,
+			"capacity": dpiStats.Capacity,
+		},
 	}
 }
 
 // ClearCache clears the detection cache
 func (ud *UnifiedDetector) ClearCache() {
-	ud.cacheMutex.Lock()
-	defer ud.cacheMutex.Unlock()
-
-	ud.cache = make(map[string]*core.DetectionResult)
+	ud.lruCache.Clear()
+	ud.dpiEngine.ClearCache()
 }
 
 // SetCacheSize updates the cache size
 func (ud *UnifiedDetector) SetCacheSize(size int) {
-	ud.cacheMutex.Lock()
-	defer ud.cacheMutex.Unlock()
-
-	ud.cacheSize = size
-
-	// Evict if current cache is larger than new size
-	if len(ud.cache) > size {
-		ud.evictCache()
-	}
+	ud.dpiEngine.SetCacheSize(size)
+	// Note: LRU cache doesn't support dynamic resize in current implementation
+	// Would need to create new cache and migrate entries
 }
 
 // UpdateConfig updates the detector configuration

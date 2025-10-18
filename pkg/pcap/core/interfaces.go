@@ -1,6 +1,8 @@
 package core
 
 import (
+	"time"
+
 	"cipgram/pkg/types"
 
 	"github.com/google/gopacket"
@@ -43,6 +45,9 @@ type DetectionStats struct {
 	SuccessfulDetections int64
 	MethodBreakdown      map[DetectionMethod]int64
 	ProtocolCounts       map[string]int64
+	CacheHits            int64
+	CacheMisses          int64
+	StartTime            time.Time
 }
 
 // DPIAnalyzer defines the interface for deep packet inspection
@@ -271,11 +276,12 @@ type Config struct {
 
 // DetectionConfig contains detection-specific configuration
 type DetectionConfig struct {
-	EnablePortBased     bool     `json:"enable_port_based"`
-	EnableDPI           bool     `json:"enable_dpi"`
-	EnableHeuristic     bool     `json:"enable_heuristic"`
-	ConfidenceThreshold float32  `json:"confidence_threshold"`
-	EnabledProtocols    []string `json:"enabled_protocols"`
+	EnablePortBased     bool      `json:"enable_port_based"`
+	EnableDPI           bool      `json:"enable_dpi"`
+	EnableHeuristic     bool      `json:"enable_heuristic"`
+	ConfidenceThreshold float32   `json:"confidence_threshold"`
+	EnabledProtocols    []string  `json:"enabled_protocols"`
+	DPI                 DPIConfig `json:"dpi"`
 }
 
 // DPIConfig contains DPI-specific configuration

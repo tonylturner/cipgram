@@ -14,6 +14,7 @@ import (
 	"cipgram/pkg/logging"
 	"cipgram/pkg/pcap/fingerprinting"
 	"cipgram/pkg/pcap/integration"
+	"cipgram/pkg/pcap/optimization"
 	"cipgram/pkg/pcap/performance"
 	"cipgram/pkg/types"
 	"cipgram/pkg/vendor"
@@ -31,6 +32,7 @@ type PCAPParser struct {
 	fingerprinter    *fingerprinting.EnhancedDeviceFingerprinter
 	packetCache      map[string][]gopacket.Packet // Cache packets per asset for fingerprinting
 	optimizer        *performance.PerformanceOptimizer
+	stringOptimizer  *optimization.StringOptimizer
 }
 
 // PCAPConfig holds configuration for PCAP parsing
@@ -63,7 +65,8 @@ func NewPCAPParser(pcapPath string, config *PCAPConfig) *PCAPParser {
 		detectionAdapter: integration.NewModularDetectionAdapter(config.ConfigPath),
 		fingerprinter:    fingerprinting.NewEnhancedDeviceFingerprinter(),
 		packetCache:      make(map[string][]gopacket.Packet),
-		optimizer:        performance.NewPerformanceOptimizer(performance.GetDefaultConfig()),
+		optimizer:        performance.NewPerformanceOptimizer(performance.GetAdaptiveConfig(pcapPath)),
+		stringOptimizer:  optimization.NewStringOptimizer(),
 	}
 }
 
@@ -178,6 +181,9 @@ func (p *PCAPParser) parseSequential() (*types.NetworkModel, error) {
 	// Print performance optimization report
 	p.optimizer.PrintPerformanceReport()
 
+	// Print string optimization statistics
+	p.printStringOptimizationStats()
+
 	// Analyze unknown protocols and provide recommendations
 	unknownFlows := make(map[string]int)
 	for _, flow := range model.Flows {
@@ -273,10 +279,11 @@ func (p *PCAPParser) processPacket(packet gopacket.Packet, model *types.NetworkM
 
 	// Detect protocol using optimized detection
 	protocol := p.detectionAdapter.DetectProtocol(packet)
+	internedProtocol := p.stringOptimizer.InternString(protocol)
 	flowKey := types.FlowKey{
 		SrcIP: srcAsset.ID,
 		DstIP: dstAsset.ID,
-		Proto: types.Protocol(protocol),
+		Proto: types.Protocol(internedProtocol),
 	}
 
 	// Update or create flow
@@ -310,7 +317,7 @@ func (p *PCAPParser) processL2Protocol(packet gopacket.Packet, model *types.Netw
 	dstAsset := p.getOrCreateAsset(model, eth.DstMAC.String(), eth.DstMAC.String())
 
 	// Detect L2 protocol
-	protocol := "Profinet-DCP" // Could be enhanced with payload analysis
+	protocol := p.stringOptimizer.InternString("Profinet-DCP") // Could be enhanced with payload analysis
 
 	flowKey := types.FlowKey{
 		SrcIP: srcAsset.ID,
@@ -359,7 +366,7 @@ func (p *PCAPParser) processARPPacket(packet gopacket.Packet, model *types.Netwo
 		flowKey := types.FlowKey{
 			SrcIP: srcAsset.ID,
 			DstIP: dstAsset.ID,
-			Proto: types.Protocol("ARP"),
+			Proto: types.Protocol(p.stringOptimizer.InternString("ARP")),
 		}
 
 		flow := model.Flows[flowKey]
@@ -387,12 +394,30 @@ func (p *PCAPParser) processARPPacket(packet gopacket.Packet, model *types.Netwo
 	return nil
 }
 
+// printStringOptimizationStats prints string optimization performance statistics
+func (p *PCAPParser) printStringOptimizationStats() {
+	stats := p.stringOptimizer.GetStats()
+	logger := logging.NewLogger("string-optimizer", logging.INFO, false)
+
+	logger.Info("String Optimization Report", map[string]interface{}{
+		"cache_hits":       stats.CacheHits,
+		"cache_misses":     stats.CacheMisses,
+		"cache_hit_rate":   stats.CacheHitRate,
+		"cache_size":       stats.CacheSize,
+		"builder_hits":     stats.BuilderHits,
+		"builder_misses":   stats.BuilderMisses,
+		"builder_hit_rate": stats.BuilderHitRate,
+	})
+}
+
 // getOrCreateAsset retrieves or creates an asset
 func (p *PCAPParser) getOrCreateAsset(model *types.NetworkModel, ip, mac string) *types.Asset {
-	// Use IP as primary key, but handle MAC-only cases
-	id := ip
+	// Use optimized string operations for asset ID generation
+	var id string
 	if ip == mac { // MAC-only case
-		id = "MAC-" + mac
+		id = p.stringOptimizer.BuildString("MAC-", mac)
+	} else {
+		id = p.stringOptimizer.InternString(ip)
 	}
 
 	asset := model.Assets[id]
