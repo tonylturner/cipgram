@@ -229,11 +229,7 @@ func (m *DNP3Matcher) Match(packet gopacket.Packet) bool {
 
 	// Check length field (should be reasonable)
 	length := payload[2]
-	if length < 5 || length > 255 {
-		return false
-	}
-
-	return true
+	return length >= 5
 }
 
 func (m *DNP3Matcher) GetDetails() map[string]interface{} {

@@ -385,11 +385,9 @@ func (edf *EnhancedDeviceFingerprinter) heuristicOSDetection(fp *TCPFingerprint)
 			return "Windows"
 		}
 		return "Windows"
-	case fp.TTL <= 255:
+	default:
 		return "Network Device"
 	}
-
-	return "Unknown"
 }
 
 // analyzeDHCPFingerprint analyzes DHCP options for device fingerprinting

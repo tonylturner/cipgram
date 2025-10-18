@@ -215,7 +215,7 @@ func (m *ModbusAnalyzer) looksLikeModbus(payload []byte) bool {
 func (m *ModbusAnalyzer) isValidFunctionCode(code uint8) bool {
 	// Valid function codes are 1-127
 	// Exception responses have bit 7 set (128-255)
-	return code >= 1 && code <= 127 || (code >= 129 && code <= 255)
+	return (code >= 1 && code <= 127) || code >= 129
 }
 
 // categorizeFunctionCode categorizes function codes

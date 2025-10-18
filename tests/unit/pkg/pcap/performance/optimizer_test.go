@@ -254,7 +254,7 @@ func TestPacketBatching(t *testing.T) {
 
 	// Get batch again (should be empty since we already got all packets)
 	batch2 := optimizer.GetBatch()
-	if batch2 != nil && len(batch2) != 0 {
+	if len(batch2) != 0 {
 		t.Errorf("Expected empty batch after getting all packets, got %d", len(batch2))
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"cipgram/pkg/errors"
 	"cipgram/pkg/types"
 )
 
@@ -20,23 +21,27 @@ func NewConfigValidator() *ConfigValidator {
 // ValidateMappingTable validates a Purdue mapping table configuration
 func (cv *ConfigValidator) ValidateMappingTable(table *types.MappingTable) error {
 	if table == nil {
-		return fmt.Errorf("mapping table cannot be nil")
+		return errors.ErrMissingRequiredField("mapping table")
 	}
 
 	if len(table.Mappings) == 0 {
-		return fmt.Errorf("mapping table must contain at least one mapping")
+		return errors.ErrInvalidConfiguration("mapping table", "must contain at least one mapping")
 	}
 
 	seenCIDRs := make(map[string]bool)
 
 	for i, mapping := range table.Mappings {
 		if err := cv.ValidateSubnetMapping(&mapping, i); err != nil {
-			return fmt.Errorf("invalid mapping at index %d: %w", i, err)
+			return errors.WrapValidation(err, errors.CodeInvalidConfig, "invalid mapping").
+				WithContext("mapping_index", i)
 		}
 
 		// Check for duplicate CIDRs
 		if seenCIDRs[mapping.CIDR] {
-			return fmt.Errorf("duplicate CIDR found: %s", mapping.CIDR)
+			return errors.NewValidationError(errors.CodeConfigConflict, "duplicate CIDR found").
+				WithContext("cidr", mapping.CIDR).
+				WithContext("mapping_index", i).
+				WithDetails("Each CIDR can only appear once in the mapping table")
 		}
 		seenCIDRs[mapping.CIDR] = true
 	}
@@ -47,23 +52,26 @@ func (cv *ConfigValidator) ValidateMappingTable(table *types.MappingTable) error
 // ValidateSubnetMapping validates a single subnet mapping
 func (cv *ConfigValidator) ValidateSubnetMapping(mapping *types.SubnetMapping, index int) error {
 	if mapping == nil {
-		return fmt.Errorf("mapping cannot be nil")
+		return errors.ErrMissingRequiredField("subnet mapping")
 	}
 
 	// Validate CIDR
 	if err := cv.ValidateCIDR(mapping.CIDR); err != nil {
-		return fmt.Errorf("invalid CIDR: %w", err)
+		return errors.WrapValidation(err, errors.CodeInvalidCIDR, "invalid CIDR in subnet mapping").
+			WithContext("mapping_index", index)
 	}
 
 	// Validate Purdue level
 	if err := cv.ValidatePurdueLevel(mapping.Level); err != nil {
-		return fmt.Errorf("invalid Purdue level: %w", err)
+		return errors.WrapValidation(err, errors.CodeInvalidLevel, "invalid Purdue level in subnet mapping").
+			WithContext("mapping_index", index)
 	}
 
 	// Validate role if provided
 	if mapping.Role != "" {
 		if err := cv.ValidateRole(mapping.Role); err != nil {
-			return fmt.Errorf("invalid role: %w", err)
+			return errors.WrapValidation(err, errors.CodeInvalidInput, "invalid role in subnet mapping").
+				WithContext("mapping_index", index)
 		}
 	}
 
@@ -73,7 +81,7 @@ func (cv *ConfigValidator) ValidateSubnetMapping(mapping *types.SubnetMapping, i
 // ValidateCIDR validates a CIDR notation string
 func (cv *ConfigValidator) ValidateCIDR(cidr string) error {
 	if cidr == "" {
-		return fmt.Errorf("CIDR cannot be empty")
+		return errors.ErrMissingRequiredField("CIDR")
 	}
 
 	// Handle special cases
@@ -83,18 +91,22 @@ func (cv *ConfigValidator) ValidateCIDR(cidr string) error {
 
 	_, network, err := net.ParseCIDR(cidr)
 	if err != nil {
-		return fmt.Errorf("invalid CIDR format: %w", err)
+		return errors.ErrInvalidCIDR(cidr, "invalid CIDR format").WithCause(err)
 	}
 
 	// Additional validation for reasonable subnet sizes
 	ones, bits := network.Mask.Size()
 	if bits == 32 { // IPv4
 		if ones < 8 {
-			return fmt.Errorf("subnet mask too broad (/%d), minimum /8 recommended", ones)
+			return errors.ErrInvalidCIDR(cidr, "subnet mask too broad, minimum /8 recommended").
+				WithContext("mask_bits", ones).
+				WithContext("ip_version", "IPv4")
 		}
 	} else if bits == 128 { // IPv6
 		if ones < 64 {
-			return fmt.Errorf("IPv6 subnet mask too broad (/%d), minimum /64 recommended", ones)
+			return errors.ErrInvalidCIDR(cidr, "IPv6 subnet mask too broad, minimum /64 recommended").
+				WithContext("mask_bits", ones).
+				WithContext("ip_version", "IPv6")
 		}
 	}
 
@@ -115,7 +127,7 @@ func (cv *ConfigValidator) ValidatePurdueLevel(level types.PurdueLevel) error {
 	}
 
 	if !validLevels[level] {
-		return fmt.Errorf("invalid Purdue level: %s", level)
+		return errors.ErrInvalidPurdueLevel(string(level))
 	}
 
 	return nil
@@ -270,7 +282,7 @@ func (cv *ConfigValidator) ValidateAsset(asset *types.Asset) error {
 // ValidateMAC validates a MAC address string
 func (cv *ConfigValidator) ValidateMAC(mac string) error {
 	if mac == "" {
-		return fmt.Errorf("MAC address cannot be empty")
+		return errors.ErrMissingRequiredField("MAC address")
 	}
 
 	// Handle broadcast MAC
@@ -280,7 +292,7 @@ func (cv *ConfigValidator) ValidateMAC(mac string) error {
 
 	_, err := net.ParseMAC(mac)
 	if err != nil {
-		return fmt.Errorf("invalid MAC address format: %w", err)
+		return errors.ErrInvalidMAC(mac).WithCause(err)
 	}
 
 	return nil

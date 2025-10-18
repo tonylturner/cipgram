@@ -1,0 +1,17 @@
+# golangci-lint configuration for CIPgram
+# Note: Due to version compatibility issues, we primarily use Makefile-based linting
+# This config serves as documentation of our intended linting rules
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck
+    - gofmt
+    - govet
+    - staticcheck
+
+issues:
+  exclude-use-default: true

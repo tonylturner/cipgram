@@ -402,7 +402,7 @@ func (d *DNP3Analyzer) categorizeControl(control uint8) string {
 // categorizeFunctionCode categorizes function codes
 func (d *DNP3Analyzer) categorizeFunctionCode(code uint8) string {
 	switch {
-	case code >= 0x00 && code <= 0x06:
+	case code <= 0x06:
 		return "Control Functions"
 	case code >= 0x07 && code <= 0x0C:
 		return "Freeze Functions"
