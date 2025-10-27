@@ -12,7 +12,10 @@ git clone https://github.com/yourusername/cipgram.git
 cd cipgram
 
 # 3. Build
-go build -o cipgram ./cmd/cipgram/
+go build ./cmd/cipgram/
+
+# This creates a binary named 'cipgram' in the current directory
+# Or use: go build -o cipgram ./cmd/cipgram/
 
 # 4. Test it works
 ./cipgram version

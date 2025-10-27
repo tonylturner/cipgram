@@ -1,7 +1,7 @@
 # CIPgram - Industrial Network Analysis Tool
 
 [![Go Version](https://img.shields.io/badge/Go-1.24-blue.svg)](https://golang.org)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 **CIPgram** is a high-performance command-line tool for analyzing industrial network traffic (PCAP files) and generating network diagrams. It specializes in OT/ICS protocols and IEC 62443 security analysis.
 
@@ -35,7 +35,17 @@ brew install go libpcap graphviz
 ```bash
 git clone https://github.com/yourusername/cipgram.git
 cd cipgram
+
+# Simple build (creates binary in current directory)
+go build ./cmd/cipgram/
+
+# Or specify output name explicitly
 go build -o cipgram ./cmd/cipgram/
+
+# Install to $GOPATH/bin (automatically in PATH if Go is configured)
+go install ./cmd/cipgram/
+
+# Or manually copy to system PATH
 sudo cp cipgram /usr/local/bin/
 ```
 
@@ -231,7 +241,7 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
