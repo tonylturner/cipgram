@@ -8,6 +8,10 @@ output/
 profiles/
 *.prof
 
+# PCAP files (can be large)
+*.pcap
+*.pcapng
+
 # Go build cache
 *.test
 *.out
@@ -21,6 +25,7 @@ profiles/
 
 # OS
 .DS_Store
+**/.DS_Store
 Thumbs.db
 
 # Temporary files
