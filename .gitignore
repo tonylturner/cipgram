@@ -1,91 +1,32 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
+# Build outputs
+cipgram
+cipgram-linux
 *.exe
-*.exe~
-*.dll
-*.so
-*.dylib
 
-# Test binary, built with `go test -c`
-*.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
+# Test outputs
+output/
+profiles/
 *.prof
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
+# Go build cache
+*.test
+*.out
 
-# Go workspace file
-go.work
-go.work.sum
-
-# Environment files
-.env
-.env.local
-.env.*.local
-
-# IDE and editor files
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS generated files
+# OS
 .DS_Store
-.DS_Store?
-output/.DS_Store
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
-
-# Logs
-*.log
-logs/
 
 # Temporary files
 *.tmp
-*.temp
-temp/
-tmp/
+*.log
 
-# CIPgram specific
-output/
-.oui_cache/
-.backup_old_files/
-cipgram
-cipgram.exe
-main_old.go
-
-# Network analysis data (sensitive)
-pcaps/
-configs/
-*.pcap
-*.pcapng
-*.cap
-
-# Certificates and keys (security)
-*.pem
-*.key
-*.crt
-*.p12
-*.pfx
-
-# Database files
-*.db
-*.sqlite
-*.sqlite3
-
-# Backup files
-*.bak
-*.backup
-
-# Test coverage
+# Coverage
 coverage.txt
-coverage.html
-coverage.out
+*.coverprofile

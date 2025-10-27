@@ -106,31 +106,19 @@ Assets isolated to operational technology networks:
 
 ## Usage Examples
 
-### Complete Security Assessment
+### Complete Security Assessment (Planned Feature)
 ```bash
-./cipgram -pcap production_traffic.pcap \
-          -firewall-config opnsense_config.xml \
-          -project "quarterly_security_review" \
-          -iec62443-analysis \
-          -compliance-report
+./cipgram combined production_traffic.pcap opnsense_config.xml project "quarterly_security_review"
 ```
 
-### Segmentation Planning
+### PCAP Analysis for Segmentation Planning
 ```bash
-./cipgram -pcap current_baseline.pcap \
-          -firewall-config current_config.xml \
-          -project "microsegmentation_planning" \
-          -identify-opportunities \
-          -risk-assessment
+./cipgram pcap current_baseline.pcap project "microsegmentation_planning" diagram=both
 ```
 
-### Policy Validation
+### Firewall Configuration Analysis
 ```bash
-./cipgram -pcap weekly_traffic.pcap \
-          -firewall-config production_firewall.xml \
-          -project "policy_compliance_check" \
-          -policy-violations \
-          -generate-exceptions
+./cipgram config production_firewall.xml project "policy_compliance_check"
 ```
 
 ## Output Analysis

@@ -44,20 +44,20 @@ type NetworkModel struct {
 
 // AnalysisResult represents the output of network analysis
 type AnalysisResult struct {
-	Model       *NetworkModel
-	Summary     *AnalysisSummary
-	Risks       []*RiskAssessment
+	Model           *NetworkModel
+	Summary         *AnalysisSummary
+	Risks           []*RiskAssessment
 	Recommendations []*Recommendation
 }
 
 // AnalysisSummary provides high-level analysis statistics
 type AnalysisSummary struct {
-	TotalAssets     int
-	TotalNetworks   int
-	TotalPolicies   int
-	TotalFlows      int
-	ProtocolsFound  []Protocol
-	ZonesIdentified []IEC62443Zone
+	TotalAssets      int
+	TotalNetworks    int
+	TotalPolicies    int
+	TotalFlows       int
+	ProtocolsFound   []Protocol
+	ZonesIdentified  []IEC62443Zone
 	RiskDistribution map[RiskLevel]int
 }
 
@@ -86,7 +86,7 @@ type Recommendation struct {
 type ParserConfig struct {
 	EnableVendorLookup   bool
 	EnableHostnameResolv bool
-	FastMode            bool
-	MaxNodes            int
-	TimeoutSeconds      int
+	FastMode             bool
+	MaxNodes             int
+	TimeoutSeconds       int
 }

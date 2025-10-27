@@ -13,17 +13,17 @@
 ```
 
 ### **Method 2: Main Command (Enhanced)**
-I've added firewall config support to your main command:
+Use the main CIPgram command for firewall analysis:
 
 ```bash
-# Build with new firewall support
-go build -o cipgram
+# Build with firewall support
+go build -o cipgram ./cmd/cipgram
 
 # Firewall-only analysis
-./cipgram -firewall-config config.xml -project "security_audit"
+./cipgram config config.xml project "security_audit"
 
-# Combined PCAP + Firewall analysis  
-./cipgram -pcap traffic.pcap -firewall-config config.xml -project "full_assessment"
+# Combined PCAP + Firewall analysis (planned feature)
+./cipgram combined traffic.pcap config.xml project "full_assessment"
 ```
 
 ## 📁 **Supported Config Types**
@@ -60,7 +60,7 @@ go build -o cipgram
 
 ### **Workshop Scenario 1: Firewall Audit**
 ```bash
-./cipgram -firewall-config student_firewall.xml -project "security_review"
+./cipgram config student_firewall.xml project "security_review"
 ```
 **Students Learn:**
 - Network topology visualization
@@ -70,16 +70,16 @@ go build -o cipgram
 ### **Workshop Scenario 2: Before/After Comparison**
 ```bash
 # Analyze current state
-./cipgram -firewall-config current_config.xml -project "before_segmentation"
+./cipgram config current_config.xml project "before_segmentation"
 
 # Analyze improved state  
-./cipgram -firewall-config improved_config.xml -project "after_segmentation"
+./cipgram config improved_config.xml project "after_segmentation"
 ```
 
 ### **Workshop Scenario 3: Combined Analysis**
 ```bash
-# Full network assessment
-./cipgram -pcap network_traffic.pcap -firewall-config firewall.xml -project "complete_audit"
+# Full network assessment (planned feature)
+./cipgram combined network_traffic.pcap firewall.xml project "complete_audit"
 ```
 **Shows:**
 - What the firewall *should* allow vs what traffic *actually* flows
@@ -96,8 +96,8 @@ cd /Users/tturner/Documents/GitHub/cipgram
 ./analyze_firewall_config.sh tests/configs/opnsense/test_opnsense_config.xml demo_audit
 
 # Or build and use main command
-go build -o cipgram
-./cipgram -firewall-config tests/configs/opnsense/test_opnsense_config.xml -project "demo_firewall"
+go build -o cipgram ./cmd/cipgram
+./cipgram config tests/configs/opnsense/test_opnsense_config.xml project "demo_firewall"
 ```
 
 This will create professional network diagrams showing your firewall's network topology and IEC 62443 compliance zones! 🎉

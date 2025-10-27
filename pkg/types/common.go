@@ -1,6 +1,7 @@
 package types
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -43,6 +44,14 @@ const (
 	ProtoSMTP   Protocol = "SMTP-TCP-25"
 	ProtoDNS    Protocol = "DNS-UDP-53"
 	ProtoNTP    Protocol = "NTP-UDP-123"
+	ProtoARP    Protocol = "ARP"
+	ProtoICMP   Protocol = "ICMP"
+	ProtoICMPv6 Protocol = "ICMPv6"
+	ProtoDHCP   Protocol = "DHCP"
+	ProtoTFTP   Protocol = "TFTP-UDP-69"
+	ProtoLDAP   Protocol = "LDAP-TCP-389"
+	ProtoRDP    Protocol = "RDP-TCP-3389"
+	ProtoVNC    Protocol = "VNC-TCP-5900"
 )
 
 // PurdueLevel represents the Purdue Model levels for industrial systems
@@ -111,9 +120,14 @@ const (
 
 // FlowKey uniquely identifies a network flow
 type FlowKey struct {
-	SrcIP string
-	DstIP string
-	Proto Protocol
+	SrcIP string   `json:"src_ip"`
+	DstIP string   `json:"dst_ip"`
+	Proto Protocol `json:"protocol"`
+}
+
+// String returns a string representation for use as map keys
+func (fk FlowKey) String() string {
+	return fmt.Sprintf("%s->%s:%s", fk.SrcIP, fk.DstIP, fk.Proto)
 }
 
 // NetworkRange represents a range of network addresses
@@ -177,18 +191,22 @@ type Graph struct {
 
 // Asset represents a network device/host with enhanced segmentation context
 type Asset struct {
-	ID           string
-	IP           string
-	MAC          string
-	Hostname     string
-	DeviceName   string
-	Vendor       string
-	PurdueLevel  PurdueLevel
-	IEC62443Zone IEC62443Zone
-	Roles        []string
-	Protocols    []Protocol
-	Criticality  CriticalityLevel
-	Exposure     ExposureLevel
+	ID                    string
+	IP                    string
+	MAC                   string
+	Hostname              string
+	DeviceName            string
+	Vendor                string
+	OS                    string // Operating system from fingerprinting
+	Model                 string // Device model from fingerprinting
+	Version               string // Software/firmware version
+	PurdueLevel           PurdueLevel
+	IEC62443Zone          IEC62443Zone
+	Roles                 []string
+	Protocols             []Protocol
+	Criticality           CriticalityLevel
+	Exposure              ExposureLevel
+	FingerprintingDetails map[string]interface{} // Enhanced fingerprinting metadata
 }
 
 // NetworkSegment represents a logical or physical network segment

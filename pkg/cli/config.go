@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -269,10 +268,10 @@ func parsePcapCommand(args []string, config *Config) (*Config, error) {
 		}
 	}
 
+	config.SetDefaults()
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
-	config.SetDefaults()
 	return config, nil
 }
 
@@ -316,10 +315,10 @@ func parseConfigCommand(args []string, config *Config) (*Config, error) {
 		}
 	}
 
+	config.SetDefaults()
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
-	config.SetDefaults()
 	return config, nil
 }
 
@@ -376,10 +375,10 @@ func parseCombinedCommand(args []string, config *Config) (*Config, error) {
 		}
 	}
 
+	config.SetDefaults()
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
-	config.SetDefaults()
 	return config, nil
 }
 
@@ -545,16 +544,40 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("combined command requires both PCAP and firewall configuration files")
 	}
 
-	// Check if input files exist
+	// Comprehensive input validation with security checks
 	if c.PcapPath != "" {
-		if _, err := os.Stat(c.PcapPath); os.IsNotExist(err) {
-			return fmt.Errorf("PCAP file not found: %s", c.PcapPath)
+		if err := validateFilePath(c.PcapPath, "PCAP"); err != nil {
+			return err
 		}
 	}
 
 	if c.FirewallConfig != "" {
-		if _, err := os.Stat(c.FirewallConfig); os.IsNotExist(err) {
-			return fmt.Errorf("firewall config file not found: %s", c.FirewallConfig)
+		if err := validateFilePath(c.FirewallConfig, "config"); err != nil {
+			return err
+		}
+	}
+
+	if c.ConfigPath != "" {
+		if err := validateFilePath(c.ConfigPath, "YAML"); err != nil {
+			return err
+		}
+	}
+
+	// Validate project name for filesystem safety
+	if err := validateProjectName(c.ProjectName); err != nil {
+		return err
+	}
+
+	// Validate output paths if specified
+	if c.OutDOT != "" {
+		if err := validateOutputPath(filepath.Dir(c.OutDOT)); err != nil {
+			return fmt.Errorf("invalid DOT output path: %v", err)
+		}
+	}
+
+	if c.OutJSON != "" {
+		if err := validateOutputPath(filepath.Dir(c.OutJSON)); err != nil {
+			return fmt.Errorf("invalid JSON output path: %v", err)
 		}
 	}
 

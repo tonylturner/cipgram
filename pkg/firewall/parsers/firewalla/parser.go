@@ -23,7 +23,7 @@ func NewFirewallaParser(configPath string) *FirewallaParser {
 func (p *FirewallaParser) Parse() (*types.NetworkModel, error) {
 	// TODO: Implement Firewalla configuration parsing
 	// Firewalla uses JSON-based configuration files
-	return nil, fmt.Errorf("Firewalla parser not yet implemented")
+	return nil, fmt.Errorf("firewalla parser not yet implemented")
 }
 
 // GetType implements FirewallParser.GetType
@@ -44,7 +44,7 @@ func (p *FirewallaParser) GetMetadata() types.InputMetadata {
 // Validate implements FirewallParser.Validate
 func (p *FirewallaParser) Validate() error {
 	// TODO: Implement Firewalla config validation
-	return fmt.Errorf("Firewalla validation not yet implemented")
+	return fmt.Errorf("firewalla validation not yet implemented")
 }
 
 // FirewallaConfig represents the structure of a Firewalla configuration

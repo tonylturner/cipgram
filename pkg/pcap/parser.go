@@ -1,12 +1,21 @@
 package pcap
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"os"
 	"strings"
 	"time"
 
+	"cipgram/pkg/logging"
+	"cipgram/pkg/pcap/fingerprinting"
+	"cipgram/pkg/pcap/integration"
+	"cipgram/pkg/pcap/optimization"
+	"cipgram/pkg/pcap/performance"
 	"cipgram/pkg/types"
 	"cipgram/pkg/vendor"
 
@@ -17,8 +26,13 @@ import (
 
 // PCAPParser implements InputSource for PCAP file analysis
 type PCAPParser struct {
-	pcapPath string
-	config   *PCAPConfig
+	pcapPath         string
+	config           *PCAPConfig
+	detectionAdapter *integration.ModularDetectionAdapter
+	fingerprinter    *fingerprinting.EnhancedDeviceFingerprinter
+	packetCache      map[string][]gopacket.Packet // Cache packets per asset for fingerprinting
+	optimizer        *performance.PerformanceOptimizer
+	stringOptimizer  *optimization.StringOptimizer
 }
 
 // PCAPConfig holds configuration for PCAP parsing
@@ -46,17 +60,48 @@ func NewPCAPParser(pcapPath string, config *PCAPConfig) *PCAPParser {
 	}
 
 	return &PCAPParser{
-		pcapPath: pcapPath,
-		config:   config,
+		pcapPath:         pcapPath,
+		config:           config,
+		detectionAdapter: integration.NewModularDetectionAdapter(config.ConfigPath),
+		fingerprinter:    fingerprinting.NewEnhancedDeviceFingerprinter(),
+		packetCache:      make(map[string][]gopacket.Packet),
+		optimizer:        performance.NewPerformanceOptimizer(performance.GetAdaptiveConfig(pcapPath)),
+		stringOptimizer:  optimization.NewStringOptimizer(),
 	}
 }
 
-// Parse implements InputSource.Parse for PCAP files using new data structures
+// Parse implements InputSource.Parse for PCAP files using sequential processing
 func (p *PCAPParser) Parse() (*types.NetworkModel, error) {
+	// Check file size for logging
+	info, err := os.Stat(p.pcapPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat PCAP file: %v", err)
+	}
+
+	logger := logging.NewLogger("pcap-parser", logging.INFO, false)
+	logger.Info("Processing PCAP file using optimized sequential processing", map[string]interface{}{
+		"file_path":    p.pcapPath,
+		"file_size_mb": info.Size() / (1024 * 1024),
+	})
+	return p.parseSequential()
+}
+
+// parseSequential processes packets sequentially with optimized performance
+func (p *PCAPParser) parseSequential() (*types.NetworkModel, error) {
+	logger := logging.NewLogger("pcap-parser", logging.INFO, false)
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start)
+		logger.Info("PCAP processing completed", map[string]interface{}{
+			"duration_ms": duration.Milliseconds(),
+			"duration":    duration.String(),
+		})
+	}()
+
 	// Open PCAP file
 	handle, err := pcap.OpenOffline(p.pcapPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open PCAP file %s: %w", p.pcapPath, err)
 	}
 	defer handle.Close()
 
@@ -74,21 +119,86 @@ func (p *PCAPParser) Parse() (*types.NetworkModel, error) {
 
 	for packet := range src.Packets() {
 		packetCount++
-		if packetCount%1000 == 0 {
-			// Progress indication could go here
-		}
+
+		// Record packet processing start time
+		processingStart := time.Now()
 
 		if err := p.processPacket(packet, model); err != nil {
-			// Log error but continue processing
+			// Log error but continue processing - packet errors shouldn't stop analysis
+			logger.Warn("Failed to process packet", map[string]interface{}{
+				"packet_number": packetCount,
+				"timestamp":     packet.Metadata().Timestamp,
+				"error":         err.Error(),
+			})
 			continue
+		}
+
+		// Record processing time for performance tracking
+		processingTime := time.Since(processingStart)
+		p.optimizer.RecordPacketProcessed(processingTime)
+
+		if packetCount%10000 == 0 {
+			logger.Debug("Processing progress", map[string]interface{}{
+				"packets_processed": packetCount,
+			})
+
+			// Optimize garbage collection periodically for large PCAPs
+			if packetCount%50000 == 0 {
+				p.optimizer.OptimizeGC()
+			}
 		}
 	}
 
+	processingTime := time.Since(start)
+	packetsPerSecond := float64(packetCount) / processingTime.Seconds()
+	logger.Info("Packet processing completed", map[string]interface{}{
+		"total_packets":      packetCount,
+		"processing_time":    processingTime.String(),
+		"packets_per_second": int(packetsPerSecond),
+	})
+
 	// Post-processing: deduplicate, classify, enhance
+	enhanceStart := time.Now()
 	p.enhanceModel(model)
+	logger.Info("Model enhancement completed", map[string]interface{}{
+		"enhancement_time": time.Since(enhanceStart).String(),
+		"total_assets":     len(model.Assets),
+		"total_flows":      len(model.Flows),
+	})
 
 	// Infer network segments from traffic patterns
 	p.inferNetworkSegments(model)
+
+	// Protocol analysis is now handled by the detection adapter
+
+	// Print enhanced detection statistics
+	p.printEnhancedStatistics()
+
+	// Print detection statistics
+	stats := p.detectionAdapter.GetDetectionStats()
+	log.Printf("Detection Statistics: %+v", stats)
+
+	// Print performance optimization report
+	p.optimizer.PrintPerformanceReport()
+
+	// Print string optimization statistics
+	p.printStringOptimizationStats()
+
+	// Analyze unknown protocols and provide recommendations
+	unknownFlows := make(map[string]int)
+	for _, flow := range model.Flows {
+		protocol := string(flow.Protocol)
+		if strings.HasPrefix(protocol, "Unknown-") || strings.HasPrefix(protocol, "TCP (ports") || strings.HasPrefix(protocol, "UDP (ports") {
+			unknownFlows[protocol] = int(flow.Packets)
+		}
+	}
+
+	if len(unknownFlows) > 0 {
+		log.Printf("Found %d unknown protocol flows", len(unknownFlows))
+		for protocol, count := range unknownFlows {
+			log.Printf("  %s: %d packets", protocol, count)
+		}
+	}
 
 	return model, nil
 }
@@ -109,7 +219,7 @@ func (p *PCAPParser) GetMetadata() types.InputMetadata {
 		Type:      types.InputTypePCAP,
 		Timestamp: modTime,
 		Size:      size,
-		Hash:      "", // TODO: Calculate file hash
+		Hash:      calculateFileHash(p.pcapPath),
 	}
 }
 
@@ -122,8 +232,11 @@ func (p *PCAPParser) GetType() types.InputType {
 func (p *PCAPParser) processPacket(packet gopacket.Packet, model *types.NetworkModel) error {
 	// Extract network layers
 	ethLayer := packet.Layer(layers.LayerTypeEthernet)
+	arpLayer := packet.Layer(layers.LayerTypeARP)
 	ip4Layer := packet.Layer(layers.LayerTypeIPv4)
 	ip6Layer := packet.Layer(layers.LayerTypeIPv6)
+	icmpLayer := packet.Layer(layers.LayerTypeICMPv4)
+	icmp6Layer := packet.Layer(layers.LayerTypeICMPv6)
 	tcpLayer := packet.Layer(layers.LayerTypeTCP)
 	udpLayer := packet.Layer(layers.LayerTypeUDP)
 
@@ -132,6 +245,11 @@ func (p *PCAPParser) processPacket(packet gopacket.Packet, model *types.NetworkM
 
 	if ethLayer != nil {
 		eth = ethLayer.(*layers.Ethernet)
+	}
+
+	// Handle ARP packets (Layer 2)
+	if arpLayer != nil {
+		return p.processARPPacket(packet, model, eth, arpLayer.(*layers.ARP))
 	}
 
 	// Handle IPv4/IPv6
@@ -155,25 +273,29 @@ func (p *PCAPParser) processPacket(packet gopacket.Packet, model *types.NetworkM
 	srcAsset := p.getOrCreateAsset(model, srcIP.String(), eth.SrcMAC.String())
 	dstAsset := p.getOrCreateAsset(model, dstIP.String(), eth.DstMAC.String())
 
-	// Detect protocol and create flow
-	protocol := p.detectProtocol(tcpLayer, udpLayer, eth)
+	// Cache packets for fingerprinting (limit to 50 packets per asset)
+	p.cachePacketForFingerprinting(srcAsset.ID, packet)
+	p.cachePacketForFingerprinting(dstAsset.ID, packet)
+
+	// Detect protocol using optimized detection
+	protocol := p.detectionAdapter.DetectProtocol(packet)
+	internedProtocol := p.stringOptimizer.InternString(protocol)
 	flowKey := types.FlowKey{
 		SrcIP: srcAsset.ID,
 		DstIP: dstAsset.ID,
-		Proto: types.Protocol(protocol),
+		Proto: types.Protocol(internedProtocol),
 	}
 
 	// Update or create flow
 	flow := model.Flows[flowKey]
 	if flow == nil {
-		flow = &types.Flow{
-			Source:      srcAsset.ID,
-			Destination: dstAsset.ID,
-			Protocol:    types.Protocol(protocol),
-			Ports:       []types.Port{},
-			FirstSeen:   packet.Metadata().Timestamp,
-			Allowed:     true, // Assume allowed for PCAP traffic
-		}
+		// Use performance optimizer to get flow from pool
+		flow = p.optimizer.GetFlow()
+		flow.Source = srcAsset.ID
+		flow.Destination = dstAsset.ID
+		flow.Protocol = types.Protocol(protocol)
+		flow.FirstSeen = packet.Metadata().Timestamp
+		flow.Allowed = true // Assume allowed for PCAP traffic
 		model.Flows[flowKey] = flow
 	}
 
@@ -183,7 +305,7 @@ func (p *PCAPParser) processPacket(packet gopacket.Packet, model *types.NetworkM
 	flow.LastSeen = packet.Metadata().Timestamp
 
 	// Update asset protocol information
-	p.updateAssetProtocols(srcAsset, dstAsset, protocol, tcpLayer, udpLayer)
+	p.updateAssetProtocols(srcAsset, dstAsset, protocol, tcpLayer, udpLayer, icmpLayer, icmp6Layer)
 
 	return nil
 }
@@ -195,7 +317,7 @@ func (p *PCAPParser) processL2Protocol(packet gopacket.Packet, model *types.Netw
 	dstAsset := p.getOrCreateAsset(model, eth.DstMAC.String(), eth.DstMAC.String())
 
 	// Detect L2 protocol
-	protocol := "Profinet-DCP" // Could be enhanced with payload analysis
+	protocol := p.stringOptimizer.InternString("Profinet-DCP") // Could be enhanced with payload analysis
 
 	flowKey := types.FlowKey{
 		SrcIP: srcAsset.ID,
@@ -227,12 +349,75 @@ func (p *PCAPParser) processL2Protocol(packet gopacket.Packet, model *types.Netw
 	return nil
 }
 
+// processARPPacket handles ARP packets
+func (p *PCAPParser) processARPPacket(packet gopacket.Packet, model *types.NetworkModel, eth *layers.Ethernet, arp *layers.ARP) error {
+	// Extract IP addresses from ARP packet
+	var srcIP, dstIP string
+
+	if arp.Operation == layers.ARPRequest || arp.Operation == layers.ARPReply {
+		srcIP = net.IP(arp.SourceProtAddress).String()
+		dstIP = net.IP(arp.DstProtAddress).String()
+
+		// Create assets for ARP participants
+		srcAsset := p.getOrCreateAsset(model, srcIP, net.HardwareAddr(arp.SourceHwAddress).String())
+		dstAsset := p.getOrCreateAsset(model, dstIP, net.HardwareAddr(arp.DstHwAddress).String())
+
+		// Create ARP flow
+		flowKey := types.FlowKey{
+			SrcIP: srcAsset.ID,
+			DstIP: dstAsset.ID,
+			Proto: types.Protocol(p.stringOptimizer.InternString("ARP")),
+		}
+
+		flow := model.Flows[flowKey]
+		if flow == nil {
+			flow = &types.Flow{
+				Source:      srcAsset.ID,
+				Destination: dstAsset.ID,
+				Protocol:    types.Protocol("ARP"),
+				FirstSeen:   packet.Metadata().Timestamp,
+				Allowed:     true,
+			}
+			model.Flows[flowKey] = flow
+		}
+
+		// Update flow statistics
+		flow.Packets++
+		flow.Bytes += int64(len(packet.Data()))
+		flow.LastSeen = packet.Metadata().Timestamp
+
+		// Update asset protocols
+		srcAsset.Protocols = p.addProtocolIfNotExists(srcAsset.Protocols, types.Protocol("ARP"))
+		dstAsset.Protocols = p.addProtocolIfNotExists(dstAsset.Protocols, types.Protocol("ARP"))
+	}
+
+	return nil
+}
+
+// printStringOptimizationStats prints string optimization performance statistics
+func (p *PCAPParser) printStringOptimizationStats() {
+	stats := p.stringOptimizer.GetStats()
+	logger := logging.NewLogger("string-optimizer", logging.INFO, false)
+
+	logger.Info("String Optimization Report", map[string]interface{}{
+		"cache_hits":       stats.CacheHits,
+		"cache_misses":     stats.CacheMisses,
+		"cache_hit_rate":   stats.CacheHitRate,
+		"cache_size":       stats.CacheSize,
+		"builder_hits":     stats.BuilderHits,
+		"builder_misses":   stats.BuilderMisses,
+		"builder_hit_rate": stats.BuilderHitRate,
+	})
+}
+
 // getOrCreateAsset retrieves or creates an asset
 func (p *PCAPParser) getOrCreateAsset(model *types.NetworkModel, ip, mac string) *types.Asset {
-	// Use IP as primary key, but handle MAC-only cases
-	id := ip
+	// Use optimized string operations for asset ID generation
+	var id string
 	if ip == mac { // MAC-only case
-		id = "MAC-" + mac
+		id = p.stringOptimizer.BuildString("MAC-", mac)
+	} else {
+		id = p.stringOptimizer.InternString(ip)
 	}
 
 	asset := model.Assets[id]
@@ -249,26 +434,25 @@ func (p *PCAPParser) getOrCreateAsset(model *types.NetworkModel, ip, mac string)
 			hostname = vendor.ResolveHostname(ip)
 		}
 
-		asset = &types.Asset{
-			ID:           id,
-			IP:           ip,
-			MAC:          mac,
-			Hostname:     hostname,
-			Vendor:       vendorName,
-			Protocols:    []types.Protocol{},
-			PurdueLevel:  types.Unknown,
-			IEC62443Zone: "", // Will be inferred later
-			Criticality:  types.LowAsset,
-			Exposure:     types.OTOnly,
-		}
+		// Use performance optimizer to get asset from pool
+		asset = p.optimizer.GetAsset()
+		asset.ID = id
+		asset.IP = ip
+		asset.MAC = mac
+		asset.Hostname = hostname
+		asset.Vendor = vendorName
+		asset.PurdueLevel = types.Unknown
+		asset.IEC62443Zone = "" // Will be inferred later
+		asset.Criticality = types.LowAsset
+		asset.Exposure = types.OTOnly
 		model.Assets[id] = asset
 	}
 
 	return asset
 }
 
-// detectProtocol detects industrial protocols from packet layers
-func (p *PCAPParser) detectProtocol(tcpLayer, udpLayer gopacket.Layer, eth *layers.Ethernet) string {
+// detectProtocol detects protocols from packet layers
+func (p *PCAPParser) detectProtocol(tcpLayer, udpLayer, icmpLayer, icmp6Layer gopacket.Layer, eth *layers.Ethernet) string {
 	if tcpLayer != nil {
 		tcp := tcpLayer.(*layers.TCP)
 		return p.detectTCPProtocol(uint16(tcp.SrcPort), uint16(tcp.DstPort))
@@ -277,6 +461,14 @@ func (p *PCAPParser) detectProtocol(tcpLayer, udpLayer gopacket.Layer, eth *laye
 	if udpLayer != nil {
 		udp := udpLayer.(*layers.UDP)
 		return p.detectUDPProtocol(uint16(udp.SrcPort), uint16(udp.DstPort))
+	}
+
+	if icmpLayer != nil {
+		return "ICMP"
+	}
+
+	if icmp6Layer != nil {
+		return "ICMPv6"
 	}
 
 	if eth != nil {
@@ -289,6 +481,7 @@ func (p *PCAPParser) detectProtocol(tcpLayer, udpLayer gopacket.Layer, eth *laye
 // detectTCPProtocol maps TCP ports to protocols
 func (p *PCAPParser) detectTCPProtocol(srcPort, dstPort uint16) string {
 	protocolMap := map[uint16]string{
+		// Industrial protocols (primary focus)
 		44818: "EtherNet/IP",
 		502:   "Modbus TCP",
 		102:   "S7Comm",
@@ -296,6 +489,31 @@ func (p *PCAPParser) detectTCPProtocol(srcPort, dstPort uint16) string {
 		20000: "DNP3",
 		9600:  "FINS",
 		5007:  "SLMP",
+		135:   "OPC Classic",
+		8834:  "SINEC",
+		1025:  "Melsec Q",
+		20547: "Omron TCP",
+
+		// Standard IT protocols
+		80:    "HTTP",
+		443:   "HTTPS",
+		22:    "SSH",
+		23:    "Telnet",
+		21:    "FTP",
+		25:    "SMTP",
+		110:   "POP3",
+		143:   "IMAP",
+		993:   "IMAPS",
+		995:   "POP3S",
+		389:   "LDAP",
+		636:   "LDAPS",
+		3389:  "RDP",
+		5900:  "VNC",
+		1433:  "SQL Server",
+		3306:  "MySQL",
+		5432:  "PostgreSQL",
+		6379:  "Redis",
+		27017: "MongoDB",
 	}
 
 	if proto, exists := protocolMap[srcPort]; exists {
@@ -311,9 +529,23 @@ func (p *PCAPParser) detectTCPProtocol(srcPort, dstPort uint16) string {
 // detectUDPProtocol maps UDP ports to protocols
 func (p *PCAPParser) detectUDPProtocol(srcPort, dstPort uint16) string {
 	protocolMap := map[uint16]string{
+		// Industrial protocols
 		2222:  "EtherNet/IP I/O",
 		47808: "BACnet/IP",
 		18246: "CC-Link",
+
+		// Standard IT protocols
+		53:   "DNS",
+		67:   "DHCP Server",
+		68:   "DHCP Client",
+		69:   "TFTP",
+		123:  "NTP",
+		161:  "SNMP",
+		162:  "SNMP Trap",
+		514:  "Syslog",
+		1812: "RADIUS Auth",
+		1813: "RADIUS Acct",
+		5353: "mDNS",
 	}
 
 	if proto, exists := protocolMap[srcPort]; exists {
@@ -337,7 +569,7 @@ func (p *PCAPParser) detectL2Protocol(etherType layers.EthernetType) string {
 }
 
 // updateAssetProtocols updates asset protocol information
-func (p *PCAPParser) updateAssetProtocols(srcAsset, dstAsset *types.Asset, protocol string, tcpLayer, udpLayer gopacket.Layer) {
+func (p *PCAPParser) updateAssetProtocols(srcAsset, dstAsset *types.Asset, protocol string, tcpLayer, udpLayer, icmpLayer, icmp6Layer gopacket.Layer) {
 	proto := types.Protocol(protocol)
 
 	srcAsset.Protocols = p.addProtocolIfNotExists(srcAsset.Protocols, proto)
@@ -354,6 +586,16 @@ func (p *PCAPParser) updateAssetProtocols(srcAsset, dstAsset *types.Asset, proto
 		// Could track ports for classification purposes
 		_ = udp
 	}
+	if icmpLayer != nil {
+		icmp := icmpLayer.(*layers.ICMPv4)
+		// Could track ICMP types for classification
+		_ = icmp
+	}
+	if icmp6Layer != nil {
+		icmp6 := icmp6Layer.(*layers.ICMPv6)
+		// Could track ICMPv6 types for classification
+		_ = icmp6
+	}
 }
 
 // addProtocolIfNotExists adds protocol to list if not already present
@@ -368,6 +610,9 @@ func (p *PCAPParser) addProtocolIfNotExists(protocols []types.Protocol, proto ty
 
 // enhanceModel performs post-processing enhancement
 func (p *PCAPParser) enhanceModel(model *types.NetworkModel) error {
+	// Perform device fingerprinting first
+	p.performDeviceFingerprinting(model)
+
 	// Classify assets using enhanced logic
 	for _, asset := range model.Assets {
 		asset.PurdueLevel = p.classifyAssetPurdueLevel(asset, model)
@@ -380,6 +625,173 @@ func (p *PCAPParser) enhanceModel(model *types.NetworkModel) error {
 	}
 
 	return nil
+}
+
+// performDeviceFingerprinting performs enhanced device classification
+func (p *PCAPParser) performDeviceFingerprinting(model *types.NetworkModel) {
+	logger := logging.NewLogger("device-classifier", logging.INFO, false)
+
+	enhancedCount := 0
+	basicCount := 0
+
+	for _, asset := range model.Assets {
+		// Get cached packets for this asset
+		packets := p.packetCache[asset.ID]
+
+		if len(packets) > 0 {
+			// Perform enhanced fingerprinting
+			deviceInfo := p.fingerprinter.FingerprintDevice(asset, packets)
+
+			if deviceInfo.Confidence > 0.5 {
+				asset.DeviceName = deviceInfo.DeviceType
+				asset.Vendor = deviceInfo.Manufacturer
+				asset.OS = deviceInfo.OS
+				asset.Model = deviceInfo.Model
+				asset.Version = deviceInfo.Version
+
+				// Store fingerprinting details
+				asset.FingerprintingDetails = map[string]interface{}{
+					"confidence": deviceInfo.Confidence,
+					"indicators": deviceInfo.Indicators,
+					"method":     "enhanced",
+				}
+
+				enhancedCount++
+			} else {
+				// Fall back to basic classification
+				asset.DeviceName = p.classifyDeviceType(asset)
+				asset.FingerprintingDetails = map[string]interface{}{
+					"confidence": 0.3,
+					"method":     "basic",
+				}
+				basicCount++
+			}
+		} else {
+			// Basic device classification based on protocols only
+			asset.DeviceName = p.classifyDeviceType(asset)
+			asset.FingerprintingDetails = map[string]interface{}{
+				"confidence": 0.2,
+				"method":     "protocol-only",
+			}
+			basicCount++
+		}
+
+		// Update roles based on device type
+		p.updateAssetRoles(asset)
+	}
+
+	logger.Info("Device classification completed", map[string]interface{}{
+		"total_assets":     len(model.Assets),
+		"enhanced_count":   enhancedCount,
+		"basic_count":      basicCount,
+		"enhancement_rate": float64(enhancedCount) / float64(len(model.Assets)),
+	})
+}
+
+// classifyDeviceType performs basic device type classification based on protocols
+func (p *PCAPParser) classifyDeviceType(asset *types.Asset) string {
+	// Check for industrial protocols
+	for _, protocol := range asset.Protocols {
+		protocolStr := string(protocol)
+		switch {
+		case strings.Contains(protocolStr, "Modbus"):
+			return "PLC"
+		case strings.Contains(protocolStr, "EtherNet/IP"):
+			return "PLC"
+		case strings.Contains(protocolStr, "S7Comm"):
+			return "PLC"
+		case strings.Contains(protocolStr, "DNP3"):
+			return "RTU"
+		case strings.Contains(protocolStr, "BACnet"):
+			return "Building Controller"
+		case strings.Contains(protocolStr, "OPC"):
+			return "HMI"
+		case strings.Contains(protocolStr, "HTTP") && strings.Contains(protocolStr, "HTTPS"):
+			return "HMI"
+		case strings.Contains(protocolStr, "RDP") || strings.Contains(protocolStr, "VNC"):
+			return "Workstation"
+		case strings.Contains(protocolStr, "SSH") || strings.Contains(protocolStr, "Telnet"):
+			return "Network Infrastructure"
+		}
+	}
+
+	// Default classification
+	return "Unknown"
+}
+
+// cachePacketForFingerprinting caches packets for device fingerprinting
+func (p *PCAPParser) cachePacketForFingerprinting(assetID string, packet gopacket.Packet) {
+	// Limit cache size per asset to prevent memory issues
+	const maxPacketsPerAsset = 50
+
+	if packets, exists := p.packetCache[assetID]; exists {
+		if len(packets) < maxPacketsPerAsset {
+			p.packetCache[assetID] = append(packets, packet)
+		}
+	} else {
+		p.packetCache[assetID] = []gopacket.Packet{packet}
+	}
+}
+
+// updateAssetRoles updates asset roles based on device type
+func (p *PCAPParser) updateAssetRoles(asset *types.Asset) {
+	// Clear existing roles
+	asset.Roles = []string{}
+
+	switch asset.DeviceName {
+	case "PLC":
+		asset.Roles = append(asset.Roles, "Controller", "Industrial Device")
+	case "HMI":
+		asset.Roles = append(asset.Roles, "Operator Interface", "Industrial Device")
+	case "RTU":
+		asset.Roles = append(asset.Roles, "Remote Terminal Unit", "Industrial Device")
+	case "DCS":
+		asset.Roles = append(asset.Roles, "Distributed Control System", "Industrial Device")
+	case "SCADA Server":
+		asset.Roles = append(asset.Roles, "SCADA System", "Industrial Device")
+	case "Industrial Gateway":
+		asset.Roles = append(asset.Roles, "Protocol Gateway", "Industrial Device")
+	case "Industrial Switch", "Industrial Router":
+		asset.Roles = append(asset.Roles, "Network Infrastructure", "Industrial Device")
+	case "Building Controller":
+		asset.Roles = append(asset.Roles, "Building Automation", "Industrial Device")
+	case "Process Controller":
+		asset.Roles = append(asset.Roles, "Process Control", "Industrial Device")
+	case "Safety PLC":
+		asset.Roles = append(asset.Roles, "Safety System", "Industrial Device")
+	case "Network Switch", "Network Router":
+		asset.Roles = append(asset.Roles, "Network Infrastructure")
+	case "Firewall":
+		asset.Roles = append(asset.Roles, "Security Device", "Network Infrastructure")
+	case "Workstation":
+		asset.Roles = append(asset.Roles, "End User Device")
+	case "Server":
+		asset.Roles = append(asset.Roles, "Server System")
+	default:
+		asset.Roles = append(asset.Roles, "Unknown Device")
+	}
+}
+
+// printEnhancedStatistics prints enhanced protocol detection statistics
+func (p *PCAPParser) printEnhancedStatistics() {
+	log.Printf("\n=== Enhanced Protocol Detection Statistics ===")
+
+	// Print performance statistics from the detection adapter
+	stats := p.detectionAdapter.GetDetectionStats()
+	log.Printf("Detection Performance:")
+	if totalPackets, ok := stats["total_packets"].(int64); ok {
+		log.Printf("  Total Packets: %d", totalPackets)
+	}
+	if successRate, ok := stats["success_rate"].(float32); ok {
+		log.Printf("  Success Rate: %.2f%%", successRate*100)
+	}
+
+	if methodBreakdown, ok := stats["method_breakdown"].(map[string]int64); ok {
+		log.Printf("Detection Methods:")
+		for method, count := range methodBreakdown {
+			log.Printf("  %s: %d", method, count)
+		}
+	}
 }
 
 // inferNetworkSegments creates network segments from traffic patterns
@@ -536,4 +948,22 @@ func (p *PCAPParser) inferNetworkPurpose(assets []*types.Asset) string {
 	}
 
 	return "General Purpose"
+}
+
+// calculateFileHash computes SHA256 hash of a file for integrity checking
+func calculateFileHash(filePath string) string {
+	file, err := os.Open(filePath)
+	if err != nil {
+		log.Printf("Warning: Failed to calculate file hash for %s: %v", filePath, err)
+		return ""
+	}
+	defer file.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		log.Printf("Warning: Failed to calculate file hash for %s: %v", filePath, err)
+		return ""
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil))
 }

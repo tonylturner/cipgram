@@ -1,12 +1,18 @@
 package cli
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 
+	"cipgram/internal/output"
 	"cipgram/pkg/types"
 )
 
@@ -21,7 +27,7 @@ func (a *App) generateTraditionalPurdueDOT(graph *types.Graph, outputPath string
 	fmt.Fprintln(file, "digraph PurdueModel {")
 	fmt.Fprintln(file, "  rankdir=TB;")
 	fmt.Fprintln(file, "  ranksep=1.2;")
-	fmt.Fprintln(file, "  nodesep=0.8;") 
+	fmt.Fprintln(file, "  nodesep=0.8;")
 	fmt.Fprintln(file, "  node [fontname=\"Arial\", fontsize=10, width=2.0, height=0.8];")
 	fmt.Fprintln(file, "  edge [fontname=\"Arial\", fontsize=9, penwidth=2];")
 	fmt.Fprintln(file, "  bgcolor=\"white\";")
@@ -36,7 +42,7 @@ func (a *App) generateTraditionalPurdueDOT(graph *types.Graph, outputPath string
 		if a.shouldSkipIPForNetworkDiagram(host.IP) {
 			continue
 		}
-		
+
 		level := host.InferredLevel
 		if level == types.Unknown {
 			level = types.L1 // Default unknown to L1
@@ -48,7 +54,7 @@ func (a *App) generateTraditionalPurdueDOT(graph *types.Graph, outputPath string
 	levels := []types.PurdueLevel{types.L4, types.L3, types.L2, types.L1, types.L0}
 	levelNames := map[types.PurdueLevel]string{
 		types.L4: "4    Enterprise",
-		types.L3: "3    Operations Systems", 
+		types.L3: "3    Operations Systems",
 		types.L2: "2    Supervisory Control",
 		types.L1: "1    Process Control",
 		types.L0: "0    Physical Process",
@@ -154,7 +160,7 @@ func (a *App) generateTraditionalPurdueDOT(graph *types.Graph, outputPath string
 }
 
 // generateTraditionalNetworkDOT creates traditional network topology with router/firewall center
-func (a *App) generateTraditionalNetworkDOT(graph *types.Graph, outputPath string) error {
+func (a *App) generateTraditionalNetworkDOT(graph *types.Graph, outputPath string, model *types.NetworkModel) error {
 	file, err := os.Create(outputPath)
 	if err != nil {
 		return err
@@ -168,6 +174,8 @@ func (a *App) generateTraditionalNetworkDOT(graph *types.Graph, outputPath strin
 	fmt.Fprintln(file, "  bgcolor=white;")
 	fmt.Fprintln(file, "  overlap=false;")
 	fmt.Fprintln(file, "  splines=true;")
+	fmt.Fprintln(file, "  labelloc=\"b\";")  // Place legend at bottom
+	fmt.Fprintln(file, "  labeljust=\"l\";") // Left justify legend
 	fmt.Fprintln(file, "")
 
 	// Central router/firewall node
@@ -210,38 +218,133 @@ func (a *App) generateTraditionalNetworkDOT(graph *types.Graph, outputPath strin
 		networkIndex++
 	}
 
-	// Add protocol conversations between hosts
+	// Add protocol conversations between hosts (intra-network connections)
 	fmt.Fprintln(file, "")
-	fmt.Fprintln(file, "  // Protocol conversations from PCAP")
+	fmt.Fprintln(file, "  // Intra-network protocol conversations")
 	for _, edge := range graph.Edges {
 		// Skip unwanted IPs
 		if a.shouldSkipIPForNetworkDiagram(edge.Src) || a.shouldSkipIPForNetworkDiagram(edge.Dst) {
 			continue
 		}
 
-		protocolLabel := string(edge.Protocol)
-		edgeColor := "#666666"
+		// Check if this is an intra-network connection (same network)
+		srcNetwork := a.getNetworkFromIP(edge.Src)
+		dstNetwork := a.getNetworkFromIP(edge.Dst)
 
-		// Color code industrial protocols
-		switch {
-		case strings.Contains(protocolLabel, "ENIP"):
-			edgeColor = "#00aa44"
-			protocolLabel = "EtherNet/IP"
-		case strings.Contains(protocolLabel, "Modbus"):
-			edgeColor = "#ff8800"
-		case strings.Contains(protocolLabel, "S7"):
-			edgeColor = "#0066cc"
-		case strings.Contains(protocolLabel, "OPC"):
-			edgeColor = "#cc00cc"
-		case strings.Contains(protocolLabel, "PROFINET"):
-			edgeColor = "#9900cc"
-		case strings.Contains(protocolLabel, "DNP3"):
-			edgeColor = "#ff6600"
+		if srcNetwork == dstNetwork {
+			protocolLabel := string(edge.Protocol)
+			edgeColor := "#666666"
+
+			// Color code industrial protocols
+			switch {
+			case strings.Contains(protocolLabel, "ENIP"):
+				edgeColor = "#00aa44"
+				protocolLabel = "EtherNet/IP"
+			case strings.Contains(protocolLabel, "Modbus"):
+				edgeColor = "#ff8800"
+			case strings.Contains(protocolLabel, "S7"):
+				edgeColor = "#0066cc"
+			case strings.Contains(protocolLabel, "OPC"):
+				edgeColor = "#cc00cc"
+			case strings.Contains(protocolLabel, "PROFINET"):
+				edgeColor = "#9900cc"
+			case strings.Contains(protocolLabel, "DNP3"):
+				edgeColor = "#ff6600"
+			}
+
+			fmt.Fprintf(file, "  \"%s\" -> \"%s\" [label=\"%s\", color=\"%s\"];\n",
+				edge.Src, edge.Dst, protocolLabel, edgeColor)
+		}
+	}
+
+	// Add inter-network routing connections
+	fmt.Fprintln(file, "")
+	fmt.Fprintln(file, "  // Inter-network routing connections")
+	routedConnections := make(map[string]bool) // Track unique network-to-network connections
+
+	for _, edge := range graph.Edges {
+		// Skip unwanted IPs
+		if a.shouldSkipIPForNetworkDiagram(edge.Src) || a.shouldSkipIPForNetworkDiagram(edge.Dst) {
+			continue
 		}
 
-		fmt.Fprintf(file, "  \"%s\" -> \"%s\" [label=\"%s\", color=\"%s\"];\n",
-			edge.Src, edge.Dst, protocolLabel, edgeColor)
+		// Check if this is an inter-network connection (routed)
+		srcNetwork := a.findNetworkForIP(edge.Src, model)
+		dstNetwork := a.findNetworkForIP(edge.Dst, model)
+
+		if srcNetwork != dstNetwork && srcNetwork != "Unknown" && dstNetwork != "Unknown" {
+			// Create unique connection identifier
+			connectionKey := fmt.Sprintf("%s->%s", srcNetwork, dstNetwork)
+			reverseKey := fmt.Sprintf("%s->%s", dstNetwork, srcNetwork)
+
+			// Avoid duplicate connections
+			if !routedConnections[connectionKey] && !routedConnections[reverseKey] {
+				routedConnections[connectionKey] = true
+
+				protocolLabel := string(edge.Protocol)
+
+				// Show routing through central router with thick red lines
+				fmt.Fprintf(file, "  \"%s\" -> router [style=\"bold,dashed\", color=\"#ff0000\", penwidth=3, label=\"%s\"];\n",
+					edge.Src, protocolLabel)
+				fmt.Fprintf(file, "  router -> \"%s\" [style=\"bold,dashed\", color=\"#ff0000\", penwidth=3];\n",
+					edge.Dst)
+			}
+		}
 	}
+
+	// Add legend explaining the diagram elements
+	fmt.Fprintln(file, "")
+	fmt.Fprintln(file, "  // Legend")
+	fmt.Fprintln(file, "  subgraph cluster_legend {")
+	fmt.Fprintln(file, "    label=\"\";") // Remove cluster title
+	fmt.Fprintln(file, "    style=\"filled,rounded\";")
+	fmt.Fprintln(file, "    fillcolor=\"#f9f9f9\";")
+	fmt.Fprintln(file, "    fontsize=10;")
+	fmt.Fprintln(file, "    fontname=\"Arial\";")
+	fmt.Fprintln(file, "    margin=10;")
+	fmt.Fprintln(file, "")
+
+	// Line 1: "Node Types"
+	fmt.Fprintln(file, "    legend_line1 [label=\"Node Types\", shape=plaintext, fontsize=11, fontname=\"Arial Bold\"];")
+	fmt.Fprintln(file, "")
+
+	// Line 2: Node types from left to right
+	fmt.Fprintln(file, "    legend_router [label=\"Router/Firewall\", shape=diamond, style=\"filled\", fillcolor=\"#ffcccc\", fontsize=9];")
+	fmt.Fprintln(file, "    legend_device [label=\"Network Device\", shape=box, style=\"filled,rounded\", fillcolor=\"white\", fontsize=9];")
+	fmt.Fprintln(file, "    legend_network [label=\"Network Segment\", shape=box, style=\"filled,rounded\", fillcolor=\"#f0f0f0\", fontsize=9];")
+	fmt.Fprintln(file, "")
+
+	// Line 3: "Connection Types"
+	fmt.Fprintln(file, "    legend_line3 [label=\"Connection Types\", shape=plaintext, fontsize=11, fontname=\"Arial Bold\"];")
+	fmt.Fprintln(file, "")
+
+	// Line 4: Intra-network traffic
+	fmt.Fprintln(file, "    legend_intra_start [label=\"Intra-Network Traffic\", shape=plaintext, fontsize=9];")
+	fmt.Fprintln(file, "    legend_intra_end [label=\"\", shape=plaintext, fontsize=9];")
+	fmt.Fprintln(file, "    legend_intra_start -> legend_intra_end [color=\"#00aa44\", penwidth=2, label=\"\", dir=none];")
+	fmt.Fprintln(file, "")
+
+	// Line 5: Inter-network routing
+	fmt.Fprintln(file, "    legend_routed_start [label=\"Inter-Network Routing\", shape=plaintext, fontsize=9];")
+	fmt.Fprintln(file, "    legend_routed_end [label=\"\", shape=plaintext, fontsize=9];")
+	fmt.Fprintln(file, "    legend_routed_start -> legend_routed_end [style=\"bold,dashed\", color=\"#ff0000\", penwidth=3, label=\"\", dir=none];")
+	fmt.Fprintln(file, "")
+
+	// Bottom left: "Legend"
+	fmt.Fprintln(file, "    legend_title [label=\"Legend\", shape=plaintext, fontsize=10, fontname=\"Arial Bold\"];")
+	fmt.Fprintln(file, "")
+
+	// No protocol colors section - protocols are already labeled on the diagram
+
+	// Arrange legend elements in exact vertical order
+	fmt.Fprintln(file, "    // Legend layout - clean vertical structure")
+	fmt.Fprintln(file, "    { rank=same; legend_line1; }")                                 // Line 1: "Node Types"
+	fmt.Fprintln(file, "    { rank=same; legend_router; legend_device; legend_network; }") // Line 2: Node types left to right
+	fmt.Fprintln(file, "    { rank=same; legend_line3; }")                                 // Line 3: "Connection Types"
+	fmt.Fprintln(file, "    { rank=same; legend_intra_start; legend_intra_end; }")         // Line 4: Intra-network traffic
+	fmt.Fprintln(file, "    { rank=same; legend_routed_start; legend_routed_end; }")       // Line 5: Inter-network routing
+	fmt.Fprintln(file, "    { rank=same; legend_title; }")                                 // Bottom: "Legend"
+	fmt.Fprintln(file, "  }")
 
 	fmt.Fprintln(file, "}")
 	return nil
@@ -385,4 +488,198 @@ func (a *App) generatePNGFromSVG(svgPath, pngPath string) error {
 		return fmt.Errorf("PNG generation failed (ensure Graphviz is installed): %v", err)
 	}
 	return nil
+}
+
+// generateConversationCSV creates a CSV file listing all unique conversations
+func (a *App) generateConversationCSV(model *types.NetworkModel, paths *output.OutputPaths) error {
+	// Create data directory
+	dataDir := filepath.Join(paths.ProjectRoot, "data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return fmt.Errorf("failed to create data directory: %v", err)
+	}
+
+	// Create CSV file
+	csvPath := filepath.Join(dataDir, "conversations.csv")
+	file, err := os.Create(csvPath)
+	if err != nil {
+		return fmt.Errorf("failed to create CSV file: %v", err)
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	// Write CSV header
+	header := []string{
+		"Source IP",
+		"Destination IP",
+		"Protocol",
+		"Port",
+		"Packet Count",
+		"Bytes",
+		"Is Routed",
+		"Source Network",
+		"Destination Network",
+		"First Seen",
+		"Last Seen",
+	}
+	if err := writer.Write(header); err != nil {
+		return fmt.Errorf("failed to write CSV header: %v", err)
+	}
+
+	// Process each flow as a conversation
+	for _, flow := range model.Flows {
+		// Skip filtered addresses
+		if a.shouldSkipIPForNetworkDiagram(flow.Source) || a.shouldSkipIPForNetworkDiagram(flow.Destination) {
+			continue
+		}
+
+		// Determine if conversation is routed (crosses network boundaries)
+		isRouted := a.isRoutedConversation(flow.Source, flow.Destination, model)
+
+		// Find source and destination networks
+		srcNetwork := a.findNetworkForIP(flow.Source, model)
+		dstNetwork := a.findNetworkForIP(flow.Destination, model)
+
+		// Extract port from protocol or flow data
+		port := a.extractPortFromFlow(flow)
+
+		// Create CSV record
+		record := []string{
+			flow.Source,
+			flow.Destination,
+			string(flow.Protocol),
+			port,
+			strconv.FormatInt(int64(flow.Packets), 10),
+			strconv.FormatInt(flow.Bytes, 10),
+			strconv.FormatBool(isRouted),
+			srcNetwork,
+			dstNetwork,
+			flow.FirstSeen.Format("2006-01-02 15:04:05"),
+			flow.LastSeen.Format("2006-01-02 15:04:05"),
+		}
+
+		if err := writer.Write(record); err != nil {
+			return fmt.Errorf("failed to write CSV record: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// isRoutedConversation determines if a conversation crosses network boundaries
+func (a *App) isRoutedConversation(srcIP, dstIP string, model *types.NetworkModel) bool {
+	srcNet := a.findNetworkForIP(srcIP, model)
+	dstNet := a.findNetworkForIP(dstIP, model)
+
+	// If IPs are in different networks, it's routed
+	return srcNet != dstNet && srcNet != "Unknown" && dstNet != "Unknown"
+}
+
+// findNetworkForIP finds which network segment an IP belongs to
+func (a *App) findNetworkForIP(ip string, model *types.NetworkModel) string {
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return "Unknown"
+	}
+
+	for networkID, network := range model.Networks {
+		_, cidr, err := net.ParseCIDR(network.CIDR)
+		if err != nil {
+			continue
+		}
+
+		if cidr.Contains(parsedIP) {
+			return networkID
+		}
+	}
+
+	// Try to infer network from IP pattern if not found in defined networks
+	if parsedIP.To4() != nil {
+		// IPv4 - use /24 as default
+		ip4 := parsedIP.To4()
+		return fmt.Sprintf("%d.%d.%d.0/24", ip4[0], ip4[1], ip4[2])
+	}
+
+	return "Unknown"
+}
+
+// extractPortFromFlow extracts port information from flow data
+func (a *App) extractPortFromFlow(flow *types.Flow) string {
+	// Check if we have port information in the flow
+	if len(flow.Ports) > 0 {
+		return strconv.Itoa(int(flow.Ports[0].Number))
+	}
+
+	// Try to infer from protocol
+	protocol := strings.ToLower(string(flow.Protocol))
+	switch {
+	case strings.Contains(protocol, "http"):
+		return "80"
+	case strings.Contains(protocol, "https"):
+		return "443"
+	case strings.Contains(protocol, "ssh"):
+		return "22"
+	case strings.Contains(protocol, "ftp"):
+		return "21"
+	case strings.Contains(protocol, "telnet"):
+		return "23"
+	case strings.Contains(protocol, "smtp"):
+		return "25"
+	case strings.Contains(protocol, "dns"):
+		return "53"
+	case strings.Contains(protocol, "dhcp"):
+		return "67"
+	case strings.Contains(protocol, "snmp"):
+		return "161"
+	case strings.Contains(protocol, "modbus"):
+		return "502"
+	case strings.Contains(protocol, "enip") || strings.Contains(protocol, "ethernet/ip"):
+		return "44818"
+	case strings.Contains(protocol, "s7"):
+		return "102"
+	case strings.Contains(protocol, "opc"):
+		return "4840"
+	case strings.Contains(protocol, "dnp3"):
+		return "20000"
+	default:
+		return "Unknown"
+	}
+}
+
+// getNetworkFromIP returns the network segment for an IP address (simple /24 grouping)
+func (a *App) getNetworkFromIP(ip string) string {
+	ipParts := strings.Split(ip, ".")
+	if len(ipParts) >= 3 {
+		return fmt.Sprintf("%s.%s.%s.0/24", ipParts[0], ipParts[1], ipParts[2])
+	}
+	return "Unknown"
+}
+
+// getProtocolsInGraph extracts all unique protocols present in the graph edges
+func (a *App) getProtocolsInGraph(graph *types.Graph) []string {
+	protocolSet := make(map[string]bool)
+
+	for _, edge := range graph.Edges {
+		protocol := string(edge.Protocol)
+		if protocol != "" {
+			protocolSet[protocol] = true
+		}
+	}
+
+	protocols := make([]string, 0, len(protocolSet))
+	for protocol := range protocolSet {
+		protocols = append(protocols, protocol)
+	}
+
+	sort.Strings(protocols)
+	return protocols
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

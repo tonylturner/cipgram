@@ -798,7 +798,7 @@ func (g *FirewallDiagramGenerator) generateNetworkNode(w *bufio.Writer, network 
 	nodeID := fmt.Sprintf("net_%s", network.ID)
 
 	// Build the network label with all relevant information
-	label := fmt.Sprintf("%s", network.ID)
+	label := network.ID
 	if network.CIDR != "" {
 		label += fmt.Sprintf("\\n%s", network.CIDR)
 	}

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-// Since we can't import internal packages from here yet, 
+// Since we can't import internal packages from here yet,
 // let's create a simple executable version
 
 func main() {
@@ -19,7 +19,7 @@ func testOPNsenseIntegration() {
 	fmt.Printf("═══════════════════════════════════════════\n")
 
 	configPath := "../configs/opnsense/test_opnsense_config.xml"
-	
+
 	// Check if test config exists
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		fmt.Printf("⚠️  Test config not found: %s\n", configPath)
@@ -28,32 +28,32 @@ func testOPNsenseIntegration() {
 	}
 
 	fmt.Printf("✓ Test config found: %s\n", configPath)
-	
+
 	// For now, just demonstrate the structure
 	fmt.Printf("📁 Creating project structure...\n")
-	
+
 	projectName := "opnsense_integration_test"
 	outputRoot := "../../output"
 	projectPath := filepath.Join(outputRoot, projectName)
-	
+
 	// Create directories
 	dirs := []string{
 		projectPath,
 		filepath.Join(projectPath, "network_diagrams"),
-		filepath.Join(projectPath, "iec62443_diagrams"),  
+		filepath.Join(projectPath, "iec62443_diagrams"),
 		filepath.Join(projectPath, "firewall_analysis"),
 		filepath.Join(projectPath, "combined_analysis"),
 		filepath.Join(projectPath, "data"),
 	}
-	
+
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			log.Printf("Failed to create %s: %v", dir, err)
 		}
 	}
-	
+
 	fmt.Printf("✓ Project structure created: %s\n", projectPath)
-	
+
 	// Create a placeholder summary
 	summaryContent := fmt.Sprintf(`# %s - Project Summary
 
@@ -85,7 +85,7 @@ func testOPNsenseIntegration() {
 	} else {
 		fmt.Printf("✓ Project summary: %s\n", summaryPath)
 	}
-	
+
 	fmt.Printf("\n🎯 **Integration test structure ready!**\n")
 	fmt.Printf("📊 Add your OPNsense config and PCAP files to complete testing\n")
 }
