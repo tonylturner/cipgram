@@ -35,7 +35,17 @@ brew install go libpcap graphviz
 ```bash
 git clone https://github.com/yourusername/cipgram.git
 cd cipgram
+
+# Simple build (creates binary in current directory)
+go build ./cmd/cipgram/
+
+# Or specify output name explicitly
 go build -o cipgram ./cmd/cipgram/
+
+# Install to $GOPATH/bin (automatically in PATH if Go is configured)
+go install ./cmd/cipgram/
+
+# Or manually copy to system PATH
 sudo cp cipgram /usr/local/bin/
 ```
 
